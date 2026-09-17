@@ -1,37 +1,77 @@
 import { useEffect, useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { colorNames, palette } from '../engine/levels'
-export function PixelCanvas({ colors, radius, label }: { colors: number[]; radius: number; label: string }) {
+import { CANVAS_SIZE, cellSize, hitCell, zoomView } from '../engine/view'
+import type { ViewState } from '../engine/view'
+
+export function PixelCanvas({ colors, radius, label, view, setView }: {
+  colors: number[]; radius: number; label: string
+  view: ViewState; setView: Dispatch<SetStateAction<ViewState>>
+}) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const [hover, setHover] = useState<{ col: number; row: number } | null>(null)
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
+  const drag = useRef<{ x: number; y: number } | null>(null)
   const size = radius * 2 + 1
   useEffect(() => {
     const canvas = ref.current!
     const context = canvas.getContext('2d')!
-    const cell = 20
-    canvas.width = canvas.height = size * cell
-    context.clearRect(0, 0, canvas.width, canvas.height)
+    const cell = cellSize(radius, view.zoom)
+    const left = 300 + view.x - size * cell / 2
+    const top = 300 + view.y - size * cell / 2
+    context.fillStyle = '#f8faff'
+    context.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
     colors.forEach((color, index) => {
-      const x = index % size * cell
-      const y = Math.floor(index / size) * cell
+      const x = left + index % size * cell
+      const y = top + Math.floor(index / size) * cell
       context.fillStyle = palette[color]
       context.fillRect(x, y, cell, cell)
-      context.strokeStyle = '#cdd6e5'
-      context.lineWidth = 0.5
+      context.strokeStyle = '#bdc9dd'
+      context.lineWidth = 0.8
       context.strokeRect(x, y, cell, cell)
     })
-    context.strokeStyle = '#566782'
-    context.lineWidth = 1
-    const center = (radius + 0.5) * cell
+    context.save()
+    context.beginPath(); context.rect(left, top, size * cell, size * cell); context.clip()
+    context.strokeStyle = '#647896'; context.lineWidth = 1.4
     context.beginPath()
-    context.moveTo(center, 0); context.lineTo(center, canvas.height)
-    context.moveTo(0, center); context.lineTo(canvas.width, center)
-    context.stroke()
-  }, [colors, radius, size])
-  const color = hover && hover.col < size && hover.row < size ? colors[hover.row * size + hover.col] : undefined
-  return <><canvas ref={ref} aria-label={label} className="pixel-canvas" onMouseLeave={() => setHover(null)} onMouseMove={event => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    const col = Math.min(size - 1, Math.max(0, Math.floor((event.clientX - rect.left) / rect.width * size)))
-    const row = Math.min(size - 1, Math.max(0, Math.floor((event.clientY - rect.top) / rect.height * size)))
-    setHover({ col, row })
-  }}/><p className="coordinate">{hover && color !== undefined ? `(${hover.col - radius}, ${radius - hover.row}) · ${color} ${colorNames[color]}` : '悬停查看坐标与颜色'}</p></>
+    context.moveTo(300 + view.x, top); context.lineTo(300 + view.x, top + size * cell)
+    context.moveTo(left, 300 + view.y); context.lineTo(left + size * cell, 300 + view.y)
+    context.stroke(); context.restore()
+    context.fillStyle = '#526580'; context.font = '18px sans-serif'
+    context.fillText('y ↑', 12, 24); context.fillText('x →', 548, 584)
+  }, [colors, radius, size, view])
+  useEffect(() => {
+    const canvas = ref.current!
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const rect = canvas.getBoundingClientRect()
+      const x = (event.clientX - rect.left) / rect.width * CANVAS_SIZE
+      const y = (event.clientY - rect.top) / rect.height * CANVAS_SIZE
+      setView(previous => zoomView(previous, previous.zoom * Math.exp(-Math.max(-200, Math.min(200, event.deltaY)) * 0.003), x, y))
+      setPointer({ x, y })
+    }
+    canvas.addEventListener('wheel', wheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', wheel)
+  }, [setView])
+  const hit = pointer ? hitCell(pointer.x, pointer.y, radius, view) : null
+  const color = hit ? colors[hit.row * size + hit.col] : undefined
+  return <div className="canvas-area"><canvas ref={ref} width={CANVAS_SIZE} height={CANVAS_SIZE} aria-label={label} className="pixel-canvas" data-view={`${view.zoom},${view.x},${view.y}`}
+    onPointerDown={event => {
+      if (event.button !== 0) return
+      event.currentTarget.setPointerCapture(event.pointerId)
+      drag.current = { x: event.clientX, y: event.clientY }
+    }}
+    onPointerUp={event => { drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
+    onPointerCancel={() => { drag.current = null }}
+    onLostPointerCapture={() => { drag.current = null }}
+    onPointerLeave={() => setPointer(null)}
+    onPointerMove={event => {
+      const rect = event.currentTarget.getBoundingClientRect()
+      if (drag.current) {
+        const dx = (event.clientX - drag.current.x) / rect.width * CANVAS_SIZE
+        const dy = (event.clientY - drag.current.y) / rect.height * CANVAS_SIZE
+        setView(previous => ({ ...previous, x: previous.x + dx, y: previous.y + dy }))
+        drag.current = { x: event.clientX, y: event.clientY }
+      }
+      setPointer({ x: (event.clientX - rect.left) / rect.width * CANVAS_SIZE, y: (event.clientY - rect.top) / rect.height * CANVAS_SIZE })
+    }}/><p className="coordinate">{hit && color !== undefined ? `(${hit.x}, ${hit.y}) · ${color} ${colorNames[color]}` : pointer ? '画布范围外' : '悬停查看坐标与颜色 · 滚轮缩放 · 拖动平移'}</p></div>
 }
