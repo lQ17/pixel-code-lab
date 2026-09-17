@@ -98,7 +98,7 @@ test('加载失败可重试', async ({ page }) => {
 
 async function openChallenge(page: Page) {
   await page.goto('/')
-  await page.getByRole('button', { name: '开始挑战' }).click()
+  await page.getByRole('button', { name: '开始挑战', exact: true }).click()
   await expect(page.locator('.monaco-editor .view-lines')).toBeVisible()
 }
 async function writeCode(page: Page, code: string) {
@@ -121,7 +121,7 @@ test('存档校验与缩放坐标计算', () => {
 test('首次说明、Monaco、本地进度、切关及刷新恢复、恢复模板', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('dialog')).toBeVisible()
-  await page.getByRole('button', { name: '开始挑战' }).click()
+  await page.getByRole('button', { name: '开始挑战', exact: true }).click()
   await expect(page.locator('.monaco-editor')).toBeVisible()
   const solution = 'def pixel(x, y):\n    return 1 if abs(x) <= 2 and abs(y) <= 2 else 0'
   await writeCode(page, solution)
@@ -163,7 +163,8 @@ test('两图联动缩放平移、坐标命中与重置', async ({ page }) => {
   const target = page.getByLabel('目标图画布')
   const work = page.getByLabel('学生作品画布')
   await expect(target).toHaveAttribute('data-view', '1,0,0')
-  await target.hover({ position: { x: 175, y: 175 } })
+  const targetBox = (await target.boundingBox())!
+  await target.hover({ position: { x: targetBox.width / 2, y: targetBox.height / 2 } })
   await expect(page.locator('.coordinate').first()).toContainText('(0, 0) · 1 红')
   await page.mouse.wheel(0, -200)
   await expect(target).not.toHaveAttribute('data-view', '1,0,0')

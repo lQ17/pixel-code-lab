@@ -17,10 +17,27 @@ export default function CodeEditor({ value, onChange, error }: {
   const latest = useRef({ value, onChange })
   useEffect(() => { latest.current = { value, onChange } }, [value, onChange])
   useEffect(() => {
+    monaco.editor.defineTheme('mission-terminal', {
+      base: 'vs-dark', inherit: true,
+      rules: [
+        { token: 'keyword', foreground: '67d9e9' },
+        { token: 'number', foreground: 'f2be86' },
+        { token: 'string', foreground: '8edcbd' },
+        { token: 'comment', foreground: '587b91' },
+      ],
+      colors: {
+        'editor.background': '#0c1620', 'editor.foreground': '#c5d9e5',
+        'editorLineNumber.foreground': '#3d6078', 'editorLineNumber.activeForeground': '#71cdbd',
+        'editor.lineHighlightBackground': '#132530', 'editor.lineHighlightBorder': '#132530',
+        'editorCursor.foreground': '#6aefce', 'editor.selectionBackground': '#24546988',
+        'editorIndentGuide.background1': '#203645', 'editorIndentGuide.activeBackground1': '#487080',
+        'editorWidget.background': '#122330',
+      },
+    })
     const model = monaco.editor.createModel(latest.current.value, 'python')
     const editor = monaco.editor.create(container.current!, {
-      model, theme: 'vs-dark', automaticLayout: true, minimap: { enabled: false },
-      fontSize: 15, lineNumbers: 'on', scrollBeyondLastLine: false,
+      model, theme: 'mission-terminal', automaticLayout: true, minimap: { enabled: false },
+      fontSize: 14, lineNumbers: 'on', scrollBeyondLastLine: false,
       tabSize: 4, insertSpaces: true, detectIndentation: false,
       ariaLabel: 'Python代码', accessibilitySupport: 'on', editContext: false,
       padding: { top: 16, bottom: 16 }, wordWrap: 'off',

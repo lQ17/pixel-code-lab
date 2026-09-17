@@ -18,25 +18,25 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
     const cell = cellSize(radius, view.zoom)
     const left = 300 + view.x - size * cell / 2
     const top = 300 + view.y - size * cell / 2
-    context.fillStyle = '#f8faff'
+    context.fillStyle = '#0c1822'
     context.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
     colors.forEach((color, index) => {
       const x = left + index % size * cell
       const y = top + Math.floor(index / size) * cell
-      context.fillStyle = palette[color]
+      context.fillStyle = color === 0 ? '#172a36' : palette[color]
       context.fillRect(x, y, cell, cell)
-      context.strokeStyle = '#bdc9dd'
+      context.strokeStyle = '#395464'
       context.lineWidth = 0.8
       context.strokeRect(x, y, cell, cell)
     })
     context.save()
     context.beginPath(); context.rect(left, top, size * cell, size * cell); context.clip()
-    context.strokeStyle = '#647896'; context.lineWidth = 1.4
+    context.strokeStyle = '#6495a8'; context.lineWidth = 1.4
     context.beginPath()
     context.moveTo(300 + view.x, top); context.lineTo(300 + view.x, top + size * cell)
     context.moveTo(left, 300 + view.y); context.lineTo(left + size * cell, 300 + view.y)
     context.stroke(); context.restore()
-    context.fillStyle = '#526580'; context.font = '18px sans-serif'
+    context.fillStyle = '#7aafbf'; context.font = '18px sans-serif'
     context.fillText('y ↑', 12, 24); context.fillText('x →', 548, 584)
   }, [colors, radius, size, view])
   useEffect(() => {
@@ -73,5 +73,5 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
         drag.current = { x: event.clientX, y: event.clientY }
       }
       setPointer({ x: (event.clientX - rect.left) / rect.width * CANVAS_SIZE, y: (event.clientY - rect.top) / rect.height * CANVAS_SIZE })
-    }}/><p className="coordinate">{hit && color !== undefined ? `(${hit.x}, ${hit.y}) · ${color} ${colorNames[color]}` : pointer ? '画布范围外' : '悬停查看坐标与颜色 · 滚轮缩放 · 拖动平移'}</p></div>
+    }}/><p className="coordinate">{hit && color !== undefined ? `(${hit.x}, ${hit.y}) · ${color} ${colorNames[color]}` : pointer ? '画布范围外' : '悬停查坐标 · 滚轮缩放 · 拖动平移'}</p></div>
 }
