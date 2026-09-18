@@ -4,6 +4,18 @@ import { colorNames, palette } from '../engine/levels'
 import { CANVAS_SIZE, cellSize, hitCell, zoomView } from '../engine/view'
 import type { ViewState } from '../engine/view'
 
+function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCanvasElement) {
+  const rect = canvas.getBoundingClientRect()
+  const scale = Math.min(rect.width / CANVAS_SIZE, rect.height / CANVAS_SIZE)
+  const offsetX = (rect.width - CANVAS_SIZE * scale) / 2
+  const offsetY = (rect.height - CANVAS_SIZE * scale) / 2
+  return {
+    x: (event.clientX - rect.left - offsetX) / scale,
+    y: (event.clientY - rect.top - offsetY) / scale,
+    scale,
+  }
+}
+
 export function PixelCanvas({ colors, radius, label, view, setView }: {
   colors: number[]; radius: number; label: string
   view: ViewState; setView: Dispatch<SetStateAction<ViewState>>
@@ -43,9 +55,7 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
     const canvas = ref.current!
     const wheel = (event: WheelEvent) => {
       event.preventDefault()
-      const rect = canvas.getBoundingClientRect()
-      const x = (event.clientX - rect.left) / rect.width * CANVAS_SIZE
-      const y = (event.clientY - rect.top) / rect.height * CANVAS_SIZE
+      const { x, y } = canvasPoint(event, canvas)
       setView(previous => zoomView(previous, previous.zoom * Math.exp(-Math.max(-200, Math.min(200, event.deltaY)) * 0.003), x, y))
       setPointer({ x, y })
     }
@@ -65,13 +75,13 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
     onLostPointerCapture={() => { drag.current = null }}
     onPointerLeave={() => setPointer(null)}
     onPointerMove={event => {
-      const rect = event.currentTarget.getBoundingClientRect()
+      const point = canvasPoint(event, event.currentTarget)
       if (drag.current) {
-        const dx = (event.clientX - drag.current.x) / rect.width * CANVAS_SIZE
-        const dy = (event.clientY - drag.current.y) / rect.height * CANVAS_SIZE
+        const dx = (event.clientX - drag.current.x) / point.scale
+        const dy = (event.clientY - drag.current.y) / point.scale
         setView(previous => ({ ...previous, x: previous.x + dx, y: previous.y + dy }))
         drag.current = { x: event.clientX, y: event.clientY }
       }
-      setPointer({ x: (event.clientX - rect.left) / rect.width * CANVAS_SIZE, y: (event.clientY - rect.top) / rect.height * CANVAS_SIZE })
+      setPointer({ x: point.x, y: point.y })
     }}/><p className="coordinate">{hit && color !== undefined ? `(${hit.x}, ${hit.y}) · ${color} ${colorNames[color]}` : pointer ? '画布范围外' : ''}</p></div>
 }
