@@ -1,4 +1,5 @@
 export interface ViewState { zoom: number; x: number; y: number }
+export type AxisMode = 'edge' | 'center'
 export const initialView: ViewState = { zoom: 1, x: 0, y: 0 }
 export const CANVAS_SIZE = 600
 export function cellSize(radius: number, zoom: number) { return 500 / (radius * 2 + 1) * zoom }

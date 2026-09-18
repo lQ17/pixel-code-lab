@@ -2,18 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { colorNames, palette } from '../engine/levels'
 import { CANVAS_SIZE, cellSize, hitCell, zoomView } from '../engine/view'
-import type { ViewState } from '../engine/view'
+import type { AxisMode, ViewState } from '../engine/view'
 
-type PointerState = { x: number; y: number; screenX: number; screenY: number; width: number }
+type PointerState = { x: number; y: number; screenX: number; screenY: number; width: number; axisMode: AxisMode }
 
-function canvasScale(width: number, height: number) {
-  const axisReserve = Math.min(34, Math.max(24, height * 0.16))
+function canvasScale(width: number, height: number, axisMode: AxisMode) {
+  const axisReserve = axisMode === 'edge' ? Math.min(34, Math.max(24, height * 0.16)) : 0
   return Math.min(width / CANVAS_SIZE, Math.max(1, height - axisReserve) / CANVAS_SIZE)
 }
 
-function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCanvasElement) {
+function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCanvasElement, axisMode: AxisMode) {
   const rect = canvas.getBoundingClientRect()
-  const scale = canvasScale(rect.width, rect.height)
+  const scale = canvasScale(rect.width, rect.height, axisMode)
   return {
     x: (event.clientX - rect.left - rect.width / 2) / scale + CANVAS_SIZE / 2,
     y: (event.clientY - rect.top - rect.height / 2) / scale + CANVAS_SIZE / 2,
@@ -24,9 +24,9 @@ function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCa
   }
 }
 
-export function PixelCanvas({ colors, radius, label, view, setView }: {
+export function PixelCanvas({ colors, radius, label, view, setView, axisMode }: {
   colors: number[]; radius: number; label: string
-  view: ViewState; setView: Dispatch<SetStateAction<ViewState>>
+  view: ViewState; setView: Dispatch<SetStateAction<ViewState>>; axisMode: AxisMode
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const [pointer, setPointer] = useState<PointerState | null>(null)
@@ -45,7 +45,7 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
       }
       const context = canvas.getContext('2d')!
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
-      const viewportScale = canvasScale(rect.width, rect.height)
+      const viewportScale = canvasScale(rect.width, rect.height, axisMode)
       const cell = cellSize(radius, view.zoom) * viewportScale
       const left = rect.width / 2 + (view.x - size * cell / viewportScale / 2) * viewportScale
       const top = rect.height / 2 + (view.y - size * cell / viewportScale / 2) * viewportScale
@@ -62,8 +62,10 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
       })
       const side = size * cell
       const axisOffset = Math.max(8, Math.min(14, 12 * viewportScale))
-      const axisX = left - axisOffset
-      const axisY = top + side + axisOffset
+      const originX = left + (radius + 0.5) * cell
+      const originY = top + (radius + 0.5) * cell
+      const axisX = axisMode === 'center' ? originX : left - axisOffset
+      const axisY = axisMode === 'center' ? originY : top + side + axisOffset
       const axisWidth = Math.max(1.5, Math.min(3, 2.4 * viewportScale))
       const arrowSize = Math.max(5, Math.min(9, 7 * viewportScale))
       const tickFontSize = Math.max(10, Math.min(16, cell * 0.32))
@@ -76,7 +78,7 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
       context.strokeStyle = yAxisColor
       context.fillStyle = yAxisColor
       context.beginPath()
-      context.moveTo(axisX, axisY)
+      context.moveTo(axisX, axisMode === 'center' ? top + side : axisY)
       context.lineTo(axisX, top - arrowSize)
       context.moveTo(axisX, top - arrowSize)
       context.lineTo(axisX - arrowSize * 0.58, top)
@@ -92,7 +94,7 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
       context.strokeStyle = xAxisColor
       context.fillStyle = xAxisColor
       context.beginPath()
-      context.moveTo(axisX, axisY)
+      context.moveTo(axisMode === 'center' ? left : axisX, axisY)
       context.lineTo(left + side + arrowSize, axisY)
       context.moveTo(left + side + arrowSize, axisY)
       context.lineTo(left + side, axisY - arrowSize * 0.58)
@@ -109,13 +111,21 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
       context.textAlign = 'center'
       context.textBaseline = 'top'
       for (let index = 0; index < size; index += 1) {
-        context.fillText(String(index - radius), left + (index + 0.5) * cell, axisY + 5)
+        const value = index - radius
+        if (axisMode !== 'center' || value !== 0) context.fillText(String(value), left + (index + 0.5) * cell, axisY + 5)
       }
       context.fillStyle = yAxisColor
       context.textAlign = 'right'
       context.textBaseline = 'middle'
       for (let index = 0; index < size; index += 1) {
-        context.fillText(String(radius - index), axisX - 5, top + (index + 0.5) * cell)
+        const value = radius - index
+        if (axisMode !== 'center' || value !== 0) context.fillText(String(value), axisX - 5, top + (index + 0.5) * cell)
+      }
+      if (axisMode === 'center') {
+        context.fillStyle = xAxisColor
+        context.textAlign = 'left'
+        context.textBaseline = 'top'
+        context.fillText('0', originX + 4, originY + 4)
       }
       context.restore()
     }
@@ -123,21 +133,22 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
     observer.observe(canvas)
     draw()
     return () => observer.disconnect()
-  }, [colors, radius, size, view])
+  }, [axisMode, colors, radius, size, view])
   useEffect(() => {
     const canvas = ref.current!
     const wheel = (event: WheelEvent) => {
       event.preventDefault()
-      const point = canvasPoint(event, canvas)
+      const point = canvasPoint(event, canvas, axisMode)
       setView(previous => zoomView(previous, previous.zoom * Math.exp(-Math.max(-200, Math.min(200, event.deltaY)) * 0.003), point.x, point.y))
-      setPointer(point)
+      setPointer({ ...point, axisMode })
     }
     canvas.addEventListener('wheel', wheel, { passive: false })
     return () => canvas.removeEventListener('wheel', wheel)
-  }, [setView])
-  const hit = pointer ? hitCell(pointer.x, pointer.y, radius, view) : null
+  }, [axisMode, setView])
+  const activePointer = pointer?.axisMode === axisMode ? pointer : null
+  const hit = activePointer ? hitCell(activePointer.x, activePointer.y, radius, view) : null
   const color = hit ? colors[hit.row * size + hit.col] : undefined
-  return <div className="canvas-area"><canvas ref={ref} width={CANVAS_SIZE} height={CANVAS_SIZE} aria-label={label} className="pixel-canvas" data-view={`${view.zoom},${view.x},${view.y}`}
+  return <div className="canvas-area"><canvas ref={ref} width={CANVAS_SIZE} height={CANVAS_SIZE} aria-label={label} className="pixel-canvas" data-view={`${view.zoom},${view.x},${view.y}`} data-axis-mode={axisMode}
     onPointerDown={event => {
       if (event.button !== 0) return
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -148,13 +159,13 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
     onLostPointerCapture={() => { drag.current = null }}
     onPointerLeave={() => setPointer(null)}
     onPointerMove={event => {
-      const point = canvasPoint(event, event.currentTarget)
+      const point = canvasPoint(event, event.currentTarget, axisMode)
       if (drag.current) {
         const dx = (event.clientX - drag.current.x) / point.scale
         const dy = (event.clientY - drag.current.y) / point.scale
         setView(previous => ({ ...previous, x: previous.x + dx, y: previous.y + dy }))
         drag.current = { x: event.clientX, y: event.clientY }
       }
-      setPointer(point)
-    }}/><p className="coordinate" style={pointer && hit && color !== undefined ? { left: `${Math.max(4, Math.min(pointer.screenX + 12, pointer.width - 208))}px`, top: `${Math.max(4, pointer.screenY - 34)}px` } : undefined}>{hit && color !== undefined ? <><span>坐标:(</span><span className="coordinate-x">x: {hit.x}</span><span>, </span><span className="coordinate-y">y: {hit.y}</span><span>), </span><span className="coordinate-color">颜色: <i className={color === 0 ? 'coordinate-swatch empty' : 'coordinate-swatch'} style={color === 0 ? undefined : { backgroundColor: palette[color] }} />{colorNames[color]}</span></> : ''}</p></div>
+      setPointer({ ...point, axisMode })
+    }}/><p className="coordinate" style={activePointer && hit && color !== undefined ? { left: `${Math.max(4, Math.min(activePointer.screenX + 12, activePointer.width - 208))}px`, top: `${Math.max(4, activePointer.screenY - 34)}px` } : undefined}>{hit && color !== undefined ? <><span>坐标:(</span><span className="coordinate-x">x: {hit.x}</span><span>, </span><span className="coordinate-y">y: {hit.y}</span><span>), </span><span className="coordinate-color">颜色: <i className={color === 0 ? 'coordinate-swatch empty' : 'coordinate-swatch'} style={color === 0 ? undefined : { backgroundColor: palette[color] }} />{colorNames[color]}</span></> : ''}</p></div>
 }

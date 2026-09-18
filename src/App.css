@@ -1,4 +1,5 @@
 /* Mission control: a single-screen desktop game workspace. */
+.view-axis-button,.view-reset-button{position:absolute;top:22px;z-index:4;padding:4px 8px;font-size:10px;white-space:nowrap}.view-axis-button{right:92px}.view-axis-button[aria-pressed="true"]{color:var(--mint);border-color:#5baf9c;box-shadow:0 0 12px #6aefce18}.view-reset-button{right:24px}
 .arcade{--mint:#6aefce;--cyan:#61d5ef;--muted:#839caf;--line:#284052;--panel:#101c28;--board-size:clamp(155px,calc((100dvh - 380px)/2),300px);max-width:1800px;margin:auto;padding:0 22px}
 .micro{font:10px/1.5 Consolas,"Courier New",monospace;letter-spacing:1.5px;color:var(--muted)}
 button{border:1px solid #334e61;border-radius:3px;background:#142432;color:#c5d9e7;transition:background .15s,border-color .15s,box-shadow .15s}
