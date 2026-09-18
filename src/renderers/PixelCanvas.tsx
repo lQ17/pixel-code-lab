@@ -73,5 +73,5 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
         drag.current = { x: event.clientX, y: event.clientY }
       }
       setPointer({ x: (event.clientX - rect.left) / rect.width * CANVAS_SIZE, y: (event.clientY - rect.top) / rect.height * CANVAS_SIZE })
-    }}/><p className="coordinate">{hit && color !== undefined ? `(${hit.x}, ${hit.y}) · ${color} ${colorNames[color]}` : pointer ? '画布范围外' : '悬停查坐标 · 滚轮缩放 · 拖动平移'}</p></div>
+    }}/><p className="coordinate">{hit && color !== undefined ? `(${hit.x}, ${hit.y}) · ${color} ${colorNames[color]}` : pointer ? '画布范围外' : ''}</p></div>
 }
