@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { colorNames, palette } from '../engine/levels'
+import { palette } from '../engine/levels'
 import { CANVAS_SIZE, cellSize, hitCell, zoomView } from '../engine/view'
 import type { ViewState } from '../engine/view'
+
+type PointerState = { x: number; y: number; screenX: number; screenY: number; width: number }
 
 function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCanvasElement) {
   const rect = canvas.getBoundingClientRect()
@@ -10,6 +12,9 @@ function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCa
   return {
     x: (event.clientX - rect.left - rect.width / 2) / scale + CANVAS_SIZE / 2,
     y: (event.clientY - rect.top - rect.height / 2) / scale + CANVAS_SIZE / 2,
+    screenX: event.clientX - rect.left,
+    screenY: event.clientY - rect.top,
+    width: rect.width,
     scale,
   }
 }
@@ -19,7 +24,7 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
   view: ViewState; setView: Dispatch<SetStateAction<ViewState>>
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null)
+  const [pointer, setPointer] = useState<PointerState | null>(null)
   const drag = useRef<{ x: number; y: number } | null>(null)
   const size = radius * 2 + 1
   useEffect(() => {
@@ -69,9 +74,9 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
     const canvas = ref.current!
     const wheel = (event: WheelEvent) => {
       event.preventDefault()
-      const { x, y } = canvasPoint(event, canvas)
-      setView(previous => zoomView(previous, previous.zoom * Math.exp(-Math.max(-200, Math.min(200, event.deltaY)) * 0.003), x, y))
-      setPointer({ x, y })
+      const point = canvasPoint(event, canvas)
+      setView(previous => zoomView(previous, previous.zoom * Math.exp(-Math.max(-200, Math.min(200, event.deltaY)) * 0.003), point.x, point.y))
+      setPointer(point)
     }
     canvas.addEventListener('wheel', wheel, { passive: false })
     return () => canvas.removeEventListener('wheel', wheel)
@@ -96,6 +101,6 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
         setView(previous => ({ ...previous, x: previous.x + dx, y: previous.y + dy }))
         drag.current = { x: event.clientX, y: event.clientY }
       }
-      setPointer({ x: point.x, y: point.y })
-    }}/><p className="coordinate">{hit && color !== undefined ? `(${hit.x}, ${hit.y}) · ${color} ${colorNames[color]}` : pointer ? '画布范围外' : ''}</p></div>
+      setPointer(point)
+    }}/><p className="coordinate" style={pointer && hit && color !== undefined ? { left: `${Math.max(4, Math.min(pointer.screenX + 12, pointer.width - 208))}px`, top: `${Math.max(4, pointer.screenY - 34)}px` } : undefined}>{hit && color !== undefined ? `坐标:(x: ${hit.x}, y: ${hit.y}), 颜色: ${color}` : ''}</p></div>
 }

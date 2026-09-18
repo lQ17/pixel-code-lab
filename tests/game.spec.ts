@@ -165,7 +165,7 @@ test('两图联动缩放平移、坐标命中与重置', async ({ page }) => {
   await expect(target).toHaveAttribute('data-view', '1,0,0')
   const targetBox = (await target.boundingBox())!
   await target.hover({ position: { x: targetBox.width / 2, y: targetBox.height / 2 } })
-  await expect(page.locator('.coordinate').first()).toContainText('(0, 0) · 1 红')
+  await expect(page.locator('.coordinate').first()).toContainText('坐标:(x: 0, y: 0), 颜色: 1')
   await page.mouse.wheel(0, -200)
   await expect(target).not.toHaveAttribute('data-view', '1,0,0')
   await expect.poll(async () => (await target.getAttribute('data-view')) === (await work.getAttribute('data-view'))).toBe(true)
@@ -183,7 +183,7 @@ test('两图联动缩放平移、坐标命中与重置', async ({ page }) => {
   await expect(target).toHaveAttribute('data-view', '1,0,0')
   await expect(work).toHaveAttribute('data-view', '1,0,0')
   await target.hover({ position: { x: 2, y: 2 } })
-  await expect(page.locator('.coordinate').first()).toContainText('画布范围外')
+  await expect(page.locator('.coordinate').first()).toHaveText('')
   await page.getByRole('button', { name: '放大视图' }).click()
   await page.getByRole('button', { name: /实心圆/ }).click()
   await expect(page.getByLabel('目标图画布')).toHaveAttribute('data-view', '1,0,0')
