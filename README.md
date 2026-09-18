@@ -33,4 +33,4 @@ npm run dev
 
 Python Worker 用于隔离普通执行，不是恶意代码的完整安全边界；不自动安装额外 Python 包。Monaco 是按需加载的独立资源，首次进入编辑器需要下载。当前没有完整 Python 静态语言服务，错误行号来自实际运行。
 
-完整规划见 docs/项目规划书.md，阶段记录见 docs/开发记录.md。仅本地 Git，无远程仓库。
+完整规划见 docs/项目规划书.md，阶段记录见 docs/开发记录.md。本地 Git 已配置 origin：https://github.com/lQ17/pixel-code-lab.git；远端同步状态需另行核实。接手开发请先阅读 docs/交接文档.md。
