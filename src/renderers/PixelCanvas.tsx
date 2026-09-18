@@ -7,11 +7,9 @@ import type { ViewState } from '../engine/view'
 function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCanvasElement) {
   const rect = canvas.getBoundingClientRect()
   const scale = Math.min(rect.width / CANVAS_SIZE, rect.height / CANVAS_SIZE)
-  const offsetX = (rect.width - CANVAS_SIZE * scale) / 2
-  const offsetY = (rect.height - CANVAS_SIZE * scale) / 2
   return {
-    x: (event.clientX - rect.left - offsetX) / scale,
-    y: (event.clientY - rect.top - offsetY) / scale,
+    x: (event.clientX - rect.left - rect.width / 2) / scale + CANVAS_SIZE / 2,
+    y: (event.clientY - rect.top - rect.height / 2) / scale + CANVAS_SIZE / 2,
     scale,
   }
 }
@@ -26,30 +24,46 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
   const size = radius * 2 + 1
   useEffect(() => {
     const canvas = ref.current!
-    const context = canvas.getContext('2d')!
-    const cell = cellSize(radius, view.zoom)
-    const left = 300 + view.x - size * cell / 2
-    const top = 300 + view.y - size * cell / 2
-    context.fillStyle = '#0c1822'
-    context.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-    colors.forEach((color, index) => {
-      const x = left + index % size * cell
-      const y = top + Math.floor(index / size) * cell
-      context.fillStyle = color === 0 ? '#172a36' : palette[color]
-      context.fillRect(x, y, cell, cell)
-      context.strokeStyle = '#395464'
-      context.lineWidth = 0.8
-      context.strokeRect(x, y, cell, cell)
-    })
-    context.save()
-    context.beginPath(); context.rect(left, top, size * cell, size * cell); context.clip()
-    context.strokeStyle = '#6495a8'; context.lineWidth = 1.4
-    context.beginPath()
-    context.moveTo(300 + view.x, top); context.lineTo(300 + view.x, top + size * cell)
-    context.moveTo(left, 300 + view.y); context.lineTo(left + size * cell, 300 + view.y)
-    context.stroke(); context.restore()
-    context.fillStyle = '#7aafbf'; context.font = '18px sans-serif'
-    context.fillText('y ↑', 12, 24); context.fillText('x →', 548, 584)
+    const draw = () => {
+      const rect = canvas.getBoundingClientRect()
+      const dpr = window.devicePixelRatio || 1
+      const backingWidth = Math.max(1, Math.round(rect.width * dpr))
+      const backingHeight = Math.max(1, Math.round(rect.height * dpr))
+      if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+        canvas.width = backingWidth
+        canvas.height = backingHeight
+      }
+      const context = canvas.getContext('2d')!
+      context.setTransform(dpr, 0, 0, dpr, 0, 0)
+      const viewportScale = Math.min(rect.width / CANVAS_SIZE, rect.height / CANVAS_SIZE)
+      const cell = cellSize(radius, view.zoom) * viewportScale
+      const left = rect.width / 2 + (view.x - size * cell / viewportScale / 2) * viewportScale
+      const top = rect.height / 2 + (view.y - size * cell / viewportScale / 2) * viewportScale
+      context.fillStyle = '#0c1822'
+      context.fillRect(0, 0, rect.width, rect.height)
+      colors.forEach((color, index) => {
+        const x = left + index % size * cell
+        const y = top + Math.floor(index / size) * cell
+        context.fillStyle = color === 0 ? '#172a36' : palette[color]
+        context.fillRect(x, y, cell, cell)
+        context.strokeStyle = '#395464'
+        context.lineWidth = 0.8
+        context.strokeRect(x, y, cell, cell)
+      })
+      context.save()
+      context.beginPath(); context.rect(left, top, size * cell, size * cell); context.clip()
+      context.strokeStyle = '#6495a8'; context.lineWidth = 1.4
+      context.beginPath()
+      context.moveTo(rect.width / 2 + view.x * viewportScale, top); context.lineTo(rect.width / 2 + view.x * viewportScale, top + size * cell)
+      context.moveTo(left, rect.height / 2 + view.y * viewportScale); context.lineTo(left + size * cell, rect.height / 2 + view.y * viewportScale)
+      context.stroke(); context.restore()
+      context.fillStyle = '#7aafbf'; context.font = '18px sans-serif'
+      context.fillText('y ↑', 12, 24); context.fillText('x →', Math.max(12, rect.width - 52), Math.max(24, rect.height - 16))
+    }
+    const observer = new ResizeObserver(draw)
+    observer.observe(canvas)
+    draw()
+    return () => observer.disconnect()
   }, [colors, radius, size, view])
   useEffect(() => {
     const canvas = ref.current!
