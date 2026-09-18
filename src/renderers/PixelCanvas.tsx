@@ -7,8 +7,9 @@ import type { AxisMode, ViewState } from '../engine/view'
 type PointerState = { x: number; y: number; screenX: number; screenY: number; width: number; axisMode: AxisMode }
 
 function canvasScale(width: number, height: number, axisMode: AxisMode) {
-  const axisReserve = axisMode === 'edge' ? Math.min(34, Math.max(24, height * 0.16)) : 0
-  return Math.min(width / CANVAS_SIZE, Math.max(1, height - axisReserve) / CANVAS_SIZE)
+  const axisReserve = axisMode === 'edge' ? Math.min(34, Math.max(24, height * 0.16)) : Math.min(48, Math.max(32, Math.min(width, height) * 0.12))
+  const widthReserve = axisMode === 'center' ? axisReserve : 0
+  return Math.min(Math.max(1, width - widthReserve) / CANVAS_SIZE, Math.max(1, height - axisReserve) / CANVAS_SIZE)
 }
 
 function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCanvasElement, axisMode: AxisMode) {
@@ -121,6 +122,15 @@ export function PixelCanvas({ colors, radius, label, view, setView, axisMode }: 
         const value = radius - index
         if (axisMode !== 'center' || value !== 0) context.fillText(String(value), axisX - 5, top + (index + 0.5) * cell)
       }
+      context.font = `700 ${Math.max(10, Math.min(16, tickFontSize))}px Consolas, monospace`
+      context.fillStyle = xAxisColor
+      context.textAlign = 'left'
+      context.textBaseline = 'middle'
+      context.fillText('x', left + side + arrowSize + 4, axisY)
+      context.fillStyle = yAxisColor
+      context.textAlign = 'center'
+      context.textBaseline = 'bottom'
+      context.fillText('y', axisX, top - arrowSize - 3)
       if (axisMode === 'center') {
         context.fillStyle = xAxisColor
         context.textAlign = 'left'
