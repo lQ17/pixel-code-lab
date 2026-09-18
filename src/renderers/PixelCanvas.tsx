@@ -6,9 +6,14 @@ import type { ViewState } from '../engine/view'
 
 type PointerState = { x: number; y: number; screenX: number; screenY: number; width: number }
 
+function canvasScale(width: number, height: number) {
+  const axisReserve = Math.min(34, Math.max(24, height * 0.16))
+  return Math.min(width / CANVAS_SIZE, Math.max(1, height - axisReserve) / CANVAS_SIZE)
+}
+
 function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCanvasElement) {
   const rect = canvas.getBoundingClientRect()
-  const scale = Math.min(rect.width / CANVAS_SIZE, rect.height / CANVAS_SIZE)
+  const scale = canvasScale(rect.width, rect.height)
   return {
     x: (event.clientX - rect.left - rect.width / 2) / scale + CANVAS_SIZE / 2,
     y: (event.clientY - rect.top - rect.height / 2) / scale + CANVAS_SIZE / 2,
@@ -40,7 +45,7 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
       }
       const context = canvas.getContext('2d')!
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
-      const viewportScale = Math.min(rect.width / CANVAS_SIZE, rect.height / CANVAS_SIZE)
+      const viewportScale = canvasScale(rect.width, rect.height)
       const cell = cellSize(radius, view.zoom) * viewportScale
       const left = rect.width / 2 + (view.x - size * cell / viewportScale / 2) * viewportScale
       const top = rect.height / 2 + (view.y - size * cell / viewportScale / 2) * viewportScale
@@ -55,15 +60,45 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
         context.lineWidth = 0.8
         context.strokeRect(x, y, cell, cell)
       })
+      const side = size * cell
+      const axisOffset = Math.max(8, Math.min(14, 12 * viewportScale))
+      const axisX = left - axisOffset
+      const axisY = top + side + axisOffset
+      const axisWidth = Math.max(1.5, Math.min(3, 2.4 * viewportScale))
+      const arrowSize = Math.max(5, Math.min(9, 7 * viewportScale))
+      const tickFontSize = Math.max(10, Math.min(16, cell * 0.32))
       context.save()
-      context.beginPath(); context.rect(left, top, size * cell, size * cell); context.clip()
-      context.strokeStyle = '#6495a8'; context.lineWidth = 1.4
+      context.strokeStyle = '#22bd59'
+      context.fillStyle = '#22bd59'
+      context.lineWidth = axisWidth
+      context.lineCap = 'round'
+      context.lineJoin = 'round'
       context.beginPath()
-      context.moveTo(rect.width / 2 + view.x * viewportScale, top); context.lineTo(rect.width / 2 + view.x * viewportScale, top + size * cell)
-      context.moveTo(left, rect.height / 2 + view.y * viewportScale); context.lineTo(left + size * cell, rect.height / 2 + view.y * viewportScale)
-      context.stroke(); context.restore()
-      context.fillStyle = '#7aafbf'; context.font = '18px sans-serif'
-      context.fillText('y ↑', 12, 24); context.fillText('x →', Math.max(12, rect.width - 52), Math.max(24, rect.height - 16))
+      context.moveTo(axisX, axisY)
+      context.lineTo(axisX, top - arrowSize)
+      context.moveTo(axisX, top - arrowSize)
+      context.lineTo(axisX - arrowSize * 0.58, top)
+      context.moveTo(axisX, top - arrowSize)
+      context.lineTo(axisX + arrowSize * 0.58, top)
+      context.moveTo(axisX, axisY)
+      context.lineTo(left + side + arrowSize, axisY)
+      context.moveTo(left + side + arrowSize, axisY)
+      context.lineTo(left + side, axisY - arrowSize * 0.58)
+      context.moveTo(left + side + arrowSize, axisY)
+      context.lineTo(left + side, axisY + arrowSize * 0.58)
+      context.stroke()
+      context.font = `600 ${tickFontSize}px Consolas, monospace`
+      context.textAlign = 'center'
+      context.textBaseline = 'top'
+      for (let index = 0; index < size; index += 1) {
+        context.fillText(String(index - radius), left + (index + 0.5) * cell, axisY + 5)
+      }
+      context.textAlign = 'right'
+      context.textBaseline = 'middle'
+      for (let index = 0; index < size; index += 1) {
+        context.fillText(String(radius - index), axisX - 5, top + (index + 0.5) * cell)
+      }
+      context.restore()
     }
     const observer = new ResizeObserver(draw)
     observer.observe(canvas)
