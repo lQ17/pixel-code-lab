@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { palette } from '../engine/levels'
+import { colorNames, palette } from '../engine/levels'
 import { CANVAS_SIZE, cellSize, hitCell, zoomView } from '../engine/view'
 import type { ViewState } from '../engine/view'
 
@@ -67,12 +67,14 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
       const axisWidth = Math.max(1.5, Math.min(3, 2.4 * viewportScale))
       const arrowSize = Math.max(5, Math.min(9, 7 * viewportScale))
       const tickFontSize = Math.max(10, Math.min(16, cell * 0.32))
+      const xAxisColor = '#ef4444'
+      const yAxisColor = '#22bd59'
       context.save()
-      context.strokeStyle = '#22bd59'
-      context.fillStyle = '#22bd59'
       context.lineWidth = axisWidth
       context.lineCap = 'round'
       context.lineJoin = 'round'
+      context.strokeStyle = yAxisColor
+      context.fillStyle = yAxisColor
       context.beginPath()
       context.moveTo(axisX, axisY)
       context.lineTo(axisX, top - arrowSize)
@@ -80,19 +82,36 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
       context.lineTo(axisX - arrowSize * 0.58, top)
       context.moveTo(axisX, top - arrowSize)
       context.lineTo(axisX + arrowSize * 0.58, top)
+      for (let index = 0; index < size; index += 1) {
+        const y = top + (index + 0.5) * cell
+        context.moveTo(axisX - 3, y)
+        context.lineTo(axisX + 3, y)
+      }
+      context.moveTo(axisX, axisY)
+      context.stroke()
+      context.strokeStyle = xAxisColor
+      context.fillStyle = xAxisColor
+      context.beginPath()
       context.moveTo(axisX, axisY)
       context.lineTo(left + side + arrowSize, axisY)
       context.moveTo(left + side + arrowSize, axisY)
       context.lineTo(left + side, axisY - arrowSize * 0.58)
       context.moveTo(left + side + arrowSize, axisY)
       context.lineTo(left + side, axisY + arrowSize * 0.58)
+      for (let index = 0; index < size; index += 1) {
+        const x = left + (index + 0.5) * cell
+        context.moveTo(x, axisY - 3)
+        context.lineTo(x, axisY + 3)
+      }
       context.stroke()
       context.font = `600 ${tickFontSize}px Consolas, monospace`
+      context.fillStyle = xAxisColor
       context.textAlign = 'center'
       context.textBaseline = 'top'
       for (let index = 0; index < size; index += 1) {
         context.fillText(String(index - radius), left + (index + 0.5) * cell, axisY + 5)
       }
+      context.fillStyle = yAxisColor
       context.textAlign = 'right'
       context.textBaseline = 'middle'
       for (let index = 0; index < size; index += 1) {
@@ -137,5 +156,5 @@ export function PixelCanvas({ colors, radius, label, view, setView }: {
         drag.current = { x: event.clientX, y: event.clientY }
       }
       setPointer(point)
-    }}/><p className="coordinate" style={pointer && hit && color !== undefined ? { left: `${Math.max(4, Math.min(pointer.screenX + 12, pointer.width - 208))}px`, top: `${Math.max(4, pointer.screenY - 34)}px` } : undefined}>{hit && color !== undefined ? `坐标:(x: ${hit.x}, y: ${hit.y}), 颜色: ${color}` : ''}</p></div>
+    }}/><p className="coordinate" style={pointer && hit && color !== undefined ? { left: `${Math.max(4, Math.min(pointer.screenX + 12, pointer.width - 208))}px`, top: `${Math.max(4, pointer.screenY - 34)}px` } : undefined}>{hit && color !== undefined ? <><span>坐标:(</span><span className="coordinate-x">x: {hit.x}</span><span>, </span><span className="coordinate-y">y: {hit.y}</span><span>), </span><span className="coordinate-color">颜色: <i className={color === 0 ? 'coordinate-swatch empty' : 'coordinate-swatch'} style={color === 0 ? undefined : { backgroundColor: palette[color] }} />{colorNames[color]}</span></> : ''}</p></div>
 }
