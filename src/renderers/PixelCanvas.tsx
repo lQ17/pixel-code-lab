@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { colorNames, palette } from '../engine/levels'
 import { CANVAS_SIZE, cellSize, hitCell, zoomView } from '../engine/view'
 import type { AxisMode, ViewState } from '../engine/view'
+import type { Origin } from '../runners/types'
 
 type PointerState = { x: number; y: number; screenX: number; screenY: number; width: number; axisMode: AxisMode }
 
@@ -25,9 +26,9 @@ function canvasPoint(event: { clientX: number; clientY: number }, canvas: HTMLCa
   }
 }
 
-export function PixelCanvas({ colors, radius, label, view, setView, axisMode }: {
+export function PixelCanvas({ colors, radius, label, view, setView, axisMode, origin }: {
   colors: number[]; radius: number; label: string
-  view: ViewState; setView: Dispatch<SetStateAction<ViewState>>; axisMode: AxisMode
+  view: ViewState; setView: Dispatch<SetStateAction<ViewState>>; axisMode: AxisMode; origin: Origin
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const [pointer, setPointer] = useState<PointerState | null>(null)
@@ -63,8 +64,8 @@ export function PixelCanvas({ colors, radius, label, view, setView, axisMode }: 
       })
       const side = size * cell
       const axisOffset = Math.max(8, Math.min(14, 12 * viewportScale))
-      const originX = left + (radius + 0.5) * cell
-      const originY = top + (radius + 0.5) * cell
+      const originX = left + (radius + origin.x + 0.5) * cell
+      const originY = top + (radius - origin.y + 0.5) * cell
       const axisX = axisMode === 'center' ? originX : left - axisOffset
       const axisY = axisMode === 'center' ? originY : top + side + axisOffset
       const axisWidth = Math.max(1.5, Math.min(3, 2.4 * viewportScale))
@@ -112,14 +113,14 @@ export function PixelCanvas({ colors, radius, label, view, setView, axisMode }: 
       context.textAlign = 'center'
       context.textBaseline = 'top'
       for (let index = 0; index < size; index += 1) {
-        const value = index - radius
+        const value = index - radius - origin.x
         if (axisMode !== 'center' || value !== 0) context.fillText(String(value), left + (index + 0.5) * cell, axisY + 5)
       }
       context.fillStyle = yAxisColor
       context.textAlign = 'right'
       context.textBaseline = 'middle'
       for (let index = 0; index < size; index += 1) {
-        const value = radius - index
+        const value = radius - index - origin.y
         if (axisMode !== 'center' || value !== 0) context.fillText(String(value), axisX - 5, top + (index + 0.5) * cell)
       }
       context.font = `700 ${Math.max(10, Math.min(16, tickFontSize))}px Consolas, monospace`
@@ -143,7 +144,7 @@ export function PixelCanvas({ colors, radius, label, view, setView, axisMode }: 
     observer.observe(canvas)
     draw()
     return () => observer.disconnect()
-  }, [axisMode, colors, radius, size, view])
+  }, [axisMode, colors, radius, size, view, origin])
   useEffect(() => {
     const canvas = ref.current!
     const wheel = (event: WheelEvent) => {
@@ -158,7 +159,7 @@ export function PixelCanvas({ colors, radius, label, view, setView, axisMode }: 
   const activePointer = pointer?.axisMode === axisMode ? pointer : null
   const hit = activePointer ? hitCell(activePointer.x, activePointer.y, radius, view) : null
   const color = hit ? colors[hit.row * size + hit.col] : undefined
-  return <div className="canvas-area"><canvas ref={ref} width={CANVAS_SIZE} height={CANVAS_SIZE} aria-label={label} className="pixel-canvas" data-view={`${view.zoom},${view.x},${view.y}`} data-axis-mode={axisMode}
+  return <div className="canvas-area"><canvas ref={ref} width={CANVAS_SIZE} height={CANVAS_SIZE} aria-label={label} className="pixel-canvas" data-view={`${view.zoom},${view.x},${view.y}`} data-axis-mode={axisMode} data-origin={`${origin.x},${origin.y}`}
     onPointerDown={event => {
       if (event.button !== 0) return
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -177,5 +178,5 @@ export function PixelCanvas({ colors, radius, label, view, setView, axisMode }: 
         drag.current = { x: event.clientX, y: event.clientY }
       }
       setPointer({ ...point, axisMode })
-    }}/><p className="coordinate" style={activePointer && hit && color !== undefined ? { left: `${Math.max(4, Math.min(activePointer.screenX + 12, activePointer.width - 208))}px`, top: `${Math.max(4, activePointer.screenY - 34)}px` } : undefined}>{hit && color !== undefined ? <><span>坐标:(</span><span className="coordinate-x">x: {hit.x}</span><span>, </span><span className="coordinate-y">y: {hit.y}</span><span>), </span><span className="coordinate-color">颜色: <i className={color === 0 ? 'coordinate-swatch empty' : 'coordinate-swatch'} style={color === 0 ? undefined : { backgroundColor: palette[color] }} />{colorNames[color]}</span></> : ''}</p></div>
+    }}/><p className="coordinate" style={activePointer && hit && color !== undefined ? { left: `${Math.max(4, Math.min(activePointer.screenX + 12, activePointer.width - 208))}px`, top: `${Math.max(4, activePointer.screenY - 34)}px` } : undefined}>{hit && color !== undefined ? <><span>坐标:(</span><span className="coordinate-x">x: {hit.x - origin.x}</span><span>, </span><span className="coordinate-y">y: {hit.y - origin.y}</span><span>), </span><span className="coordinate-color">颜色: <i className={color === 0 ? 'coordinate-swatch empty' : 'coordinate-swatch'} style={color === 0 ? undefined : { backgroundColor: palette[color] }} />{colorNames[color]}</span></> : ''}</p></div>
 }

@@ -232,3 +232,47 @@ test('存储被禁用不会阻止写代码与运行', async ({ page }) => {
   await page.getByRole('button', { name: '运行', exact: true }).click()
   await expect(page.getByTestId('score')).toContainText('0.0%')
 })
+
+test('移动原点累加、两图坐标同步、重复运行重置与错误保留', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openChallenge(page)
+  const run = page.getByRole('button', { name: '运行', exact: true })
+  await expect(run).toBeEnabled()
+  await writeCode(page, 'move_origin(2, 3)\nmove_origin(-1, 0)\ndef pixel(x, y):\n    return 1 if abs(x+1) <= 2 and abs(y+3) <= 2 else 0')
+  const target = page.getByLabel('目标图画布')
+  const work = page.getByLabel('学生作品画布')
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await run.click()
+    await expect(run).toBeEnabled()
+    await expect(page.getByTestId('score')).toContainText('100.0%')
+    for (const canvas of [target, work]) {
+      await expect(canvas).toHaveAttribute('data-origin', '1,3')
+      const box = (await canvas.boundingBox())!
+      await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } })
+      await expect(canvas.locator('..').locator('.coordinate')).toContainText('坐标:(x: -1, y: -3)')
+    }
+  }
+  await page.screenshot({ path: 'test-results/moved-origin-edge.png', fullPage: true })
+  await page.getByRole('button', { name: '调整坐标系显示方式' }).click()
+  await page.screenshot({ path: 'test-results/moved-origin-center.png', fullPage: true })
+  await page.getByRole('button', { name: '重置视图' }).click()
+  await expect(target).toHaveAttribute('data-origin', '1,3')
+  for (const source of ['move_origin(True, 0)\ndef pixel(x, y):\n    return 0', 'move_origin(0.5, 0)\ndef pixel(x, y):\n    return 0', 'def pixel(x, y):\n    move_origin(1, 0); return 0']) {
+    await writeCode(page, source)
+    await run.click()
+    await expect(page.locator('.error[role=alert]')).toContainText('move_origin')
+    await expect(page.locator('.error[role=alert]')).toContainText('第')
+    await expect(target).toHaveAttribute('data-origin', '1,3')
+  }
+  await page.getByRole('button', { name: /双色棋盘/ }).click()
+  await expect(page.getByLabel('目标图画布')).toHaveAttribute('data-origin', '0,0')
+  await page.getByRole('button', { name: /实心正方形/ }).click()
+  await expect(target).toHaveAttribute('data-origin', '1,3')
+  await writeCode(page, 'def pixel(x, y):\n    return 0')
+  await run.click()
+  await expect(target).toHaveAttribute('data-origin', '0,0')
+  await writeCode(page, 'move_origin(20, -20)\ndef pixel(x, y):\n    return 0')
+  await run.click()
+  await expect(target).toHaveAttribute('data-origin', '20,-20')
+  await expect(page.getByTestId('score')).toContainText('0.0%')
+})

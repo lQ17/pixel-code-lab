@@ -1,5 +1,7 @@
 export interface ExecutionError { kind: string; message: string; line?: number }
-export interface RunResult { colors: number[]; logs: string; elapsedMs: number }
+export interface Origin { x: number; y: number }
+export const initialOrigin: Origin = { x: 0, y: 0 }
+export interface RunResult { colors: number[]; origin: Origin; logs: string; elapsedMs: number }
 export type RunnerStatus = 'loading' | 'ready' | 'running' | 'recovering' | 'failed'
 export type WorkerReply =
   | { type: 'ready' }

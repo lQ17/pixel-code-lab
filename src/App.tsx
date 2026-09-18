@@ -4,7 +4,7 @@ import { evaluate, targetColors } from './engine/evaluate'
 import { initialView } from './engine/view'
 import type { AxisMode } from './engine/view'
 import { PythonRunner, RunFailure } from './runners/PythonRunner'
-import type { RunnerStatus } from './runners/types'
+import { initialOrigin, type Origin, type RunnerStatus } from './runners/types'
 import { PixelCanvas } from './renderers/PixelCanvas'
 import { useProgress } from './hooks/useProgress'
 import { HelpDialog } from './components/HelpDialog'
@@ -12,7 +12,7 @@ import { LevelGlyph, PixelMark } from './components/GameIcons'
 import './App.css'
 
 const CodeEditor = lazy(() => import('./components/CodeEditor'))
-type Work = { colors: number[]; percent: number; passed: boolean; elapsedMs: number; source: string }
+type Work = { origin: Origin; colors: number[]; percent: number; passed: boolean; elapsedMs: number; source: string }
 const labels: Record<RunnerStatus, string> = { loading: '正在加载 Python…', recovering: '正在恢复 Python…', ready: 'Python 已就绪', running: '运行中…', failed: 'Python 加载失败' }
 
 export default function App() {
@@ -59,7 +59,7 @@ export default function App() {
       const result = await runner.current.run(source, level.radius)
       if (generation.current !== ticket) return
       const score = evaluate(target, result.colors)
-      setWorks(previous => ({ ...previous, [selected]: { ...score, colors: result.colors, elapsedMs: result.elapsedMs, source } }))
+      setWorks(previous => ({ ...previous, [selected]: { ...score, colors: result.colors, origin: result.origin, elapsedMs: result.elapsedMs, source } }))
       setStale(previous => ({ ...previous, [selected]: false }))
       setLogs(result.logs)
       if (score.passed) update({ passed: { ...passed, [selected]: true } }, true)
@@ -112,8 +112,8 @@ export default function App() {
           <div className="storage-status" data-testid="storage-status" aria-live="polite"><span className={saveState === 'error' ? 'save-error' : ''}>{saveState === 'saved' ? '◆ 已保存到当前浏览器' : saveState === 'pending' ? '◇ 正在保存…' : message}</span>{saveState === 'error' && <button onClick={retrySave}>重试保存</button>}</div>
         </section>
         <div className="previews"><div className="view-toolbar"><span><i aria-hidden="true">⌘</i> 两图联动 <b>{Math.round(view.zoom * 100)}%</b></span></div>
-          <section className="board-panel game-panel target-panel"><header className="panel-heading"><div><span className="micro">TARGET / 0{levelNumber}</span><h2>目标图 · {level.title}</h2></div><span className="tag">{size} × {size}</span></header><div className="board-body board-body--solo"><PixelCanvas key={`target-${levelId}`} colors={target} radius={level.radius} label="目标图画布" view={view} setView={setView} axisMode={axisMode}/><button className="view-axis-button" aria-label="调整坐标系显示方式" aria-pressed={axisMode === 'center'} title={`坐标系：${axisMode === 'edge' ? '边缘轴' : '居中轴'}，点击切换`} onClick={() => setAxisMode(previous => previous === 'edge' ? 'center' : 'edge')}>坐标系</button><button className="view-reset-button" onClick={() => setView(initialView)}>重置视图</button></div></section>
-          <section className={`board-panel game-panel result-panel ${work?.passed && !isHistorical ? 'is-cleared' : ''}`}><header className="panel-heading"><div><span className="micro">YOUR CREATION</span><h2>我的作品</h2></div><span className="tag">{status === 'running' ? '绘制中' : work ? isHistorical ? '历史结果' : '已生成' : '待运行'}</span></header><div className={`board-body result-board-body ${work ? '' : 'board-body--solo'}`}><PixelCanvas key={`work-${levelId}`} colors={work?.colors ?? blank} radius={level.radius} label="学生作品画布" view={view} setView={setView} axisMode={axisMode}/>{work && <div className="board-info result-info"><div className={work.passed ? 'clear-emblem' : 'match-emblem'} aria-hidden="true">{work.passed ? '★' : '◇'}</div><div className={`score ${work.passed ? 'success' : ''}`} data-testid="score"><span className="micro">匹配率</span><strong>{work.percent.toFixed(1)}<em>%</em></strong><span className="score-label">{work.passed ? '通关！' : '尚未匹配'}</span><small>{Math.round(work.elapsedMs)} ms</small></div><div className="match-meter" aria-hidden="true"><i style={{ width: `${work.percent}%` }}/></div>{isHistorical && <p className="historical">当前显示上次成功运行的结果，请以重新运行为准。</p>}</div>}</div></section>
+          <section className="board-panel game-panel target-panel"><header className="panel-heading"><div><span className="micro">TARGET / 0{levelNumber}</span><h2>目标图 · {level.title}</h2></div><span className="tag">{size} × {size}</span></header><div className="board-body board-body--solo"><PixelCanvas key={`target-${levelId}`} colors={target} radius={level.radius} label="目标图画布" view={view} setView={setView} axisMode={axisMode} origin={work?.origin ?? initialOrigin}/><button className="view-axis-button" aria-label="调整坐标系显示方式" aria-pressed={axisMode === 'center'} title={`坐标系：${axisMode === 'edge' ? '边缘轴' : '居中轴'}，点击切换`} onClick={() => setAxisMode(previous => previous === 'edge' ? 'center' : 'edge')}>坐标系</button><button className="view-reset-button" onClick={() => setView(initialView)}>重置视图</button></div></section>
+          <section className={`board-panel game-panel result-panel ${work?.passed && !isHistorical ? 'is-cleared' : ''}`}><header className="panel-heading"><div><span className="micro">YOUR CREATION</span><h2>我的作品</h2></div><span className="tag">{status === 'running' ? '绘制中' : work ? isHistorical ? '历史结果' : '已生成' : '待运行'}</span></header><div className={`board-body result-board-body ${work ? '' : 'board-body--solo'}`}><PixelCanvas key={`work-${levelId}`} colors={work?.colors ?? blank} radius={level.radius} label="学生作品画布" view={view} setView={setView} axisMode={axisMode} origin={work?.origin ?? initialOrigin}/>{work && <div className="board-info result-info"><div className={work.passed ? 'clear-emblem' : 'match-emblem'} aria-hidden="true">{work.passed ? '★' : '◇'}</div><div className={`score ${work.passed ? 'success' : ''}`} data-testid="score"><span className="micro">匹配率</span><strong>{work.percent.toFixed(1)}<em>%</em></strong><span className="score-label">{work.passed ? '通关！' : '尚未匹配'}</span><small>{Math.round(work.elapsedMs)} ms</small></div><div className="match-meter" aria-hidden="true"><i style={{ width: `${work.percent}%` }}/></div>{isHistorical && <p className="historical">当前显示上次成功运行的结果，请以重新运行为准。</p>}</div>}</div></section>
         </div>
       </div>
     </div>

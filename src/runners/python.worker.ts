@@ -23,7 +23,7 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
     const raw = python.runPython(executeScript, { globals: namespace })
     const result = JSON.parse(raw)
     if (result.error) send({ type: 'error', id, error: result.error, logs: result.logs })
-    else send({ type: 'result', id, result: { colors: result.colors, logs: result.logs, elapsedMs: performance.now() - started } })
+    else send({ type: 'result', id, result: { colors: result.colors, origin: result.origin, logs: result.logs, elapsedMs: performance.now() - started } })
   } catch (error) {
     send({ type: 'error', id, error: { kind: 'RuntimeError', message: `Python 执行失败：${String(error).slice(0, 500)}` }, logs: '' })
   } finally {
