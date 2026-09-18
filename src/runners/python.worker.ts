@@ -15,10 +15,10 @@ async function init() {
   }
 }
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
-  const { id, code, radius } = event.data
+  const { id, code, radius, mode } = event.data
   if (event.data.type !== 'run' || !python) return
   const started = performance.now()
-  const namespace = python.toPy({ _source: code, _radius: radius })
+  const namespace = python.toPy({ _source: code, _radius: radius, _mode: mode })
   try {
     const raw = python.runPython(executeScript, { globals: namespace })
     const result = JSON.parse(raw)

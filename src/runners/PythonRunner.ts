@@ -1,4 +1,4 @@
-import type { ExecutionError, RunResult, RunnerStatus, WorkerReply } from './types'
+import type { ExecutionError, RunResult, RunnerStatus, WorkerReply, SpaceMode } from './types'
 
 export class RunFailure extends Error {
   detail: ExecutionError
@@ -65,15 +65,16 @@ export class PythonRunner {
     this.worker?.terminate()
     this.worker = undefined
   }
-  run(code: string, radius: number): Promise<RunResult> {
+  run(code: string, radius: number, mode: SpaceMode = '2d'): Promise<RunResult> {
     if (this.status !== 'ready') return Promise.reject(new RunFailure({ kind: 'NotReady', message: '请等待 Python 就绪。' }))
     if (!Number.isInteger(radius) || radius < 0 || radius > 100) return Promise.reject(new RunFailure({ kind: 'InvalidWorld', message: '关卡范围无效。' }))
+    if (mode === '3d' && radius > 8) return Promise.reject(new RunFailure({ kind: 'InvalidWorld', message: '三维空间半径不能超过 8。' }))
     return new Promise((resolve, reject) => {
       const id = ++this.nextId
       this.pending = { id, resolve, reject }
       this.update('running')
       this.timer = setTimeout(() => this.stop('Timeout', '程序运行超过 2 秒，已停止。请检查是否存在死循环。'), 2000)
-      this.worker!.postMessage({ type: 'run', id, code, radius })
+      this.worker!.postMessage({ type: 'run', id, code, radius, mode })
     })
   }
   stop(kind = 'Cancelled', message = '本次运行已停止。') {

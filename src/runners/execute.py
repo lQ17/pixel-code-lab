@@ -1,9 +1,10 @@
 import contextlib
 import json
 import traceback
+import itertools
 
 
-def _execute(source, radius):
+def _execute(source, radius, mode):
     class Output:
         def __init__(self):
             self.text = ''
@@ -22,6 +23,8 @@ def _execute(source, radius):
     drawing = False
 
     def move_origin(dx, dy):
+        if mode == '3d':
+            raise RuntimeError('move_origin 目前仅支持二维模式。三维原点固定在空间中心。')
         if drawing:
             raise RuntimeError('move_origin(dx, dy) 必须在 pixel() 外、逐格计算开始前调用。')
         if type(dx) is not int or type(dy) is not int:
@@ -36,15 +39,19 @@ def _execute(source, radius):
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
         try:
             exec(compile(source, 'student.py', 'exec'), user)
-            function = user.get('pixel')
+            name = 'voxel' if mode == '3d' else 'pixel'
+            function = user.get(name)
             if not callable(function):
-                result = {'error': {'kind': 'MissingFunction', 'message': '请定义 pixel(x, y) 函数。'}}
+                signature = 'voxel(x, y, z)' if mode == '3d' else 'pixel(x, y)'
+                result = {'error': {'kind': 'MissingFunction', 'message': f'请定义 {signature} 函数。'}}
             else:
                 drawing = True
                 colors = []
-                for y in range(radius, -radius - 1, -1):
+                # z layers ascending, y rows descending, x columns ascending.
+                layers = range(-radius, radius + 1) if mode == '3d' else [0]
+                for z, y in itertools.product(layers, range(radius, -radius - 1, -1)):
                     for x in range(-radius, radius + 1):
-                        color = function(x - origin['x'], y - origin['y'])
+                        color = function(x, y, z) if mode == '3d' else function(x - origin['x'], y - origin['y'])
                         if type(color) is not int or not 0 <= color <= 8:
                             error = {'kind': 'InvalidColor', 'message': '颜色必须为 0～8 的整数，不能是小数、布尔值或 None。请检查返回值。'}
                             function_code = getattr(function, '__code__', None)
@@ -71,4 +78,4 @@ def _execute(source, radius):
     result['logs'] = output.text + ('\n[输出已截断，最多显示 4000 字符]' if output.truncated else '')
     return json.dumps(result)
 
-_execute(_source, _radius)
+_execute(_source, _radius, _mode)

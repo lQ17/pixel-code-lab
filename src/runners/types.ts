@@ -8,4 +8,5 @@ export type WorkerReply =
   | { type: 'init-error'; message: string }
   | { type: 'result'; id: number; result: RunResult }
   | { type: 'error'; id: number; error: ExecutionError; logs: string }
-export type WorkerRequest = { type: 'run'; id: number; code: string; radius: number }
+export type SpaceMode = '2d' | '3d'
+export type WorkerRequest = { type: 'run'; id: number; code: string; radius: number; mode: SpaceMode }
