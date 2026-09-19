@@ -139,12 +139,21 @@ export function PixelCanvas({ colors, radius, label, view, setView, axisMode, or
         context.fillText('0', originX + 4, originY + 4)
       }
       context.restore()
+      const hovered = pointer?.axisMode === axisMode ? hitCell(pointer.x, pointer.y, radius, view) : null
+      if (hovered && colors[hovered.row * size + hovered.col] !== undefined) {
+        context.save()
+        context.strokeStyle = '#ffffff'
+        context.lineWidth = 2.5
+        context.lineJoin = 'round'
+        context.strokeRect(left + hovered.col * cell, top + hovered.row * cell, cell, cell)
+        context.restore()
+      }
     }
     const observer = new ResizeObserver(draw)
     observer.observe(canvas)
     draw()
     return () => observer.disconnect()
-  }, [axisMode, colors, radius, size, view, origin])
+  }, [axisMode, colors, radius, size, view, origin, pointer])
   useEffect(() => {
     const canvas = ref.current!
     const wheel = (event: WheelEvent) => {
