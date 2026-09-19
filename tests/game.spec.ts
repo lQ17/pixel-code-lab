@@ -152,7 +152,7 @@ test('首次说明、Monaco、本地进度、切关及刷新恢复、恢复模�
   await page.getByRole('button', { name: '恢复初始代码' }).click()
   await expect(page.locator('.view-lines')).toContainText('return 0')
   await expect(page.getByRole('button', { name: /实心正方形.*已通关/ })).toBeVisible()
-  await expect(page.getByTestId('storage-status')).toContainText('已保存')
+  await expect(page.getByTestId('storage-status')).toHaveAttribute('data-save-state', 'saved')
   await writeCode(page, 'def pixel(x, y):\n    return 8')
   await page.reload()
   await expect(page.locator('.view-lines')).toContainText('return 8')
@@ -214,7 +214,7 @@ test('损坏存档保留原文，确认后可恢复保存', async ({ page }) => 
   expect(await page.evaluate(() => localStorage.getItem('pixel-code-lab.progress'))).toBe('{broken')
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '重试保存' }).click()
-  await expect(page.getByTestId('storage-status')).toContainText('已保存')
+  await expect(page.getByTestId('storage-status')).toHaveAttribute('data-save-state', 'saved')
   expect(JSON.parse((await page.evaluate(() => localStorage.getItem('pixel-code-lab.progress')))!).codes.square).toContain('return 2')
 })
 

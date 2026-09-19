@@ -213,6 +213,5 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
     })}
     {showControls && <div className="voxel-view-actions"><button disabled={!clipped} onClick={() => setCuts([radius,radius,radius])}>恢复完整模型</button><button aria-pressed={axes} onClick={() => setAxes(!axes)}>坐标辅助</button><button onClick={() => setView(initial)}>重置视角</button></div>}
     {clipped && <span className="voxel-cut-status" role="status">剖切预览 · 显示 {shown} / {colors.filter(Boolean).length} 个体素 · X≤{cuts[0]} Y≤{cuts[1]} Z≤{cuts[2]}</span>}
-    <span className="voxel-gesture">拖动轴上手柄剖切 · 拖动空白旋转 · 滚轮缩放</span>
   </div>
 }
