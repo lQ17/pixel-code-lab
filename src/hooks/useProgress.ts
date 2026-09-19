@@ -10,6 +10,7 @@ export interface Progress {
   introSeen: boolean
   mode?: '2d' | '3d'
   voxelCode?: string
+  voxelExample?: number
 }
 const empty = (): Progress => ({ schemaVersion: 1, codes: {}, passed: {}, levelId: levels[0].id, introSeen: false })
 export function parseProgress(raw: string | null): Progress {
@@ -28,9 +29,10 @@ export function parseProgress(raw: string | null): Progress {
     if (typeof code === 'string') codes[level.id] = code
     if (typeof done === 'boolean') passed[level.id] = done
   }
+  if (data.voxelExample !== undefined && (!Number.isInteger(data.voxelExample) || Number(data.voxelExample) < 0 || Number(data.voxelExample) > 2)) throw new Error('无效三维参考图')
   if (data.mode !== undefined && data.mode !== '2d' && data.mode !== '3d') throw new Error('无效模式')
   if (data.voxelCode !== undefined && typeof data.voxelCode !== 'string') throw new Error('无效三维代码')
-  return { schemaVersion: 1, codes, passed, levelId: data.levelId as string, introSeen: data.introSeen, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
+  return { schemaVersion: 1, codes, passed, levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
 }
 function load() {
   try {

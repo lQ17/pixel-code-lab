@@ -1,8 +1,14 @@
+import type { VoxelControls } from '../hooks/useVoxelControls'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { palette } from '../engine/levels'
+import { palette, colorNames } from '../engine/levels'
 
 type Point = [number, number, number]
 const initial = { yaw: -0.65, pitch: 0.45, zoom: 1 }
+function rotatePoint([x,y,z]: Point, view: typeof initial): Point {
+  const a = Math.cos(view.yaw)*x + Math.sin(view.yaw)*z
+  const b = -Math.sin(view.yaw)*x + Math.cos(view.yaw)*z
+  return [a, Math.cos(view.pitch)*y-Math.sin(view.pitch)*b, Math.sin(view.pitch)*y+Math.cos(view.pitch)*b]
+}
 // Face vertices have outward normals. Interior faces are omitted.
 const faces: { normal: Point; corners: Point[]; light: number }[] = [
   { normal: [1, 0, 0], corners: [[.5,-.5,-.5],[.5,.5,-.5],[.5,.5,.5],[.5,-.5,.5]], light: .82 },
@@ -13,27 +19,51 @@ const faces: { normal: Point; corners: Point[]; light: number }[] = [
   { normal: [0, 0, -1], corners: [[-.5,-.5,-.5],[-.5,.5,-.5],[.5,.5,-.5],[.5,-.5,-.5]], light: .65 },
 ]
 
-export function VoxelCanvas({ colors, radius }: { colors: number[]; radius: number }) {
+export function VoxelCanvas({ colors, radius, controls, label = '三维体素画布', showControls = true }: { colors: number[]; radius: number; controls: VoxelControls; label?: string; showControls?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null)
-  const [view, setView] = useState(initial)
-  const [axes, setAxes] = useState(true)
+  const { view, setView, axes, setAxes, cuts, setCuts } = controls
+  const cutDrag = useRef<{ axis: number; x: number; y: number; value: number; dx: number; dy: number } | null>(null)
   const [size, setSize] = useState({ width: 1, height: 1 })
   const drag = useRef<{ x: number; y: number; id: number } | null>(null)
+  const [pointer, setPointer] = useState<{ x:number; y:number; view:typeof view; cuts:typeof cuts; colors:typeof colors; size:typeof size } | null>(null)
   const surface = useMemo(() => {
     const side = radius * 2 + 1
-    const get = (x: number, y: number, z: number) => Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) > radius ? 0 : colors[(z + radius) * side * side + (radius - y) * side + x + radius] ?? 0
-    const result: { center: Point; normal: Point; corners: Point[]; color: number; light: number }[] = []
+    const get = (x: number, y: number, z: number) => x > cuts[0] || y > cuts[1] || z > cuts[2] || Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) > radius ? 0 : colors[(z + radius) * side * side + (radius - y) * side + x + radius] ?? 0
+    const result: { voxel: Point; center: Point; normal: Point; corners: Point[]; color: number; light: number }[] = []
     for (let z = -radius; z <= radius; z++) for (let y = -radius; y <= radius; y++) for (let x = -radius; x <= radius; x++) {
       const color = get(x, y, z)
       if (!color) continue
       for (const face of faces) {
         const [nx, ny, nz] = face.normal
         if (get(x + nx, y + ny, z + nz)) continue
-        result.push({ center: [x + nx / 2, y + ny / 2, z + nz / 2], normal: face.normal, corners: face.corners.map(([a,b,c]) => [x+a,y+b,z+c]), color, light: face.light })
+        result.push({ voxel: [x,y,z], center: [x + nx / 2, y + ny / 2, z + nz / 2], normal: face.normal, corners: face.corners.map(([a,b,c]) => [x+a,y+b,z+c]), color, light: face.light })
       }
     }
     return result
-  }, [colors, radius])
+  }, [colors, radius, cuts])
+  const hover = useMemo(() => {
+    if (!pointer || pointer.view !== view || pointer.cuts !== cuts || pointer.colors !== colors || pointer.size !== size) return null
+    const scale = Math.min(size.width,size.height)/((radius*2+3)*1.8)*view.zoom
+    const px = (pointer.x-size.width/2)/scale, py = (size.height/2-pointer.y)/scale
+    let nearest: { voxel: Point; color: number; depth: number } | null = null
+    for (const face of surface) {
+      const normal = rotatePoint(face.normal,view)
+      if (normal[2] <= .001) continue
+      const corners = face.corners.map(p => rotatePoint(p,view))
+      let positive = false, negative = false
+      for (let i=0;i<4;i++) {
+        const a=corners[i], b=corners[(i+1)%4]
+        const cross=(b[0]-a[0])*(py-a[1])-(b[1]-a[1])*(px-a[0])
+        if (cross > 1e-7) positive=true
+        if (cross < -1e-7) negative=true
+      }
+      if (positive && negative) continue
+      const center=rotatePoint(face.center,view)
+      const depth=center[2]-(normal[0]*(px-center[0])+normal[1]*(py-center[1]))/normal[2]
+      if (!nearest || depth > nearest.depth) nearest={voxel:face.voxel,color:face.color,depth}
+    }
+    return nearest
+  }, [pointer,view,cuts,colors,size,radius,surface])
   useEffect(() => {
     const element = canvas.current!
     const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }))
@@ -44,7 +74,7 @@ export function VoxelCanvas({ colors, radius }: { colors: number[]; radius: numb
     }
     element.addEventListener('wheel', wheel, { passive: false })
     return () => { observer.disconnect(); element.removeEventListener('wheel', wheel) }
-  }, [])
+  }, [setView])
   useEffect(() => {
     const element = canvas.current!
     const ctx = element.getContext('2d')!
@@ -53,12 +83,19 @@ export function VoxelCanvas({ colors, radius }: { colors: number[]; radius: numb
     ctx.scale(dpr, dpr)
     ctx.fillStyle = '#0c1822'; ctx.fillRect(0, 0, size.width, size.height)
     const scale = Math.min(size.width, size.height) / ((radius * 2 + 3) * 1.8) * view.zoom
-    const rotate = ([x,y,z]: Point): Point => {
-      const a = Math.cos(view.yaw) * x + Math.sin(view.yaw) * z
-      const b = -Math.sin(view.yaw) * x + Math.cos(view.yaw) * z
-      return [a, Math.cos(view.pitch) * y - Math.sin(view.pitch) * b, Math.sin(view.pitch) * y + Math.cos(view.pitch) * b]
-    }
+    const rotate = (point: Point) => rotatePoint(point, view)
     const project = (p: Point) => { const [x,y] = rotate(p); return [size.width / 2 + x * scale, size.height / 2 - y * scale] }
+    // Hidden voxel centers provide context without obscuring the cut faces.
+    const side = radius * 2 + 1
+    colors.forEach((color, index) => {
+      if (!color) return
+      const x = index % side - radius, y = radius - Math.floor(index / side) % side, z = Math.floor(index / (side * side)) - radius
+      if (x <= cuts[0] && y <= cuts[1] && z <= cuts[2]) return
+      const [px,py] = project([x,y,z])
+      ctx.fillStyle = palette[color]; ctx.globalAlpha = .22
+      ctx.fillRect(px-.7,py-.7,1.4,1.4)
+    })
+    ctx.globalAlpha = 1
     const visible = surface.filter(f => rotate(f.normal)[2] > 0.001).map(f => ({ ...f, depth: rotate(f.center)[2] })).sort((a,b) => a.depth - b.depth)
     for (const face of visible) {
       const hex = palette[face.color].slice(1)
@@ -67,6 +104,9 @@ export function VoxelCanvas({ colors, radius }: { colors: number[]; radius: numb
       ctx.beginPath()
       face.corners.forEach((p,i) => { const [x,y] = project(p); if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y) })
       ctx.closePath(); ctx.fill(); ctx.stroke()
+      if (hover && face.voxel.every((v,i) => v === hover.voxel[i])) {
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.stroke()
+      }
     }
     if (axes) {
       // Select a silhouette edge for each axis. All coordinates use the same
@@ -144,14 +184,35 @@ export function VoxelCanvas({ colors, radius }: { colors: number[]; radius: numb
         text('+'+label,bx+dx*14+nx*14,by+dy*14+ny*14)
       }
     }
-  }, [surface, radius, view, axes, size])
-  return <div className="voxel-viewport">
-    <canvas ref={canvas} aria-label="三维体素画布" tabIndex={0} data-view={`${view.yaw},${view.pitch},${view.zoom}`} data-voxels={colors.filter(Boolean).length}
-      onPointerDown={e => { drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId }; e.currentTarget.setPointerCapture(e.pointerId) }}
-      onPointerMove={e => { const last = drag.current; if (!last || last.id !== e.pointerId) return; const dx = e.clientX-last.x, dy = e.clientY-last.y; drag.current = { x:e.clientX,y:e.clientY,id:e.pointerId }; setView(v => ({ ...v,yaw:v.yaw+dx*.008,pitch:Math.max(-1.45,Math.min(1.45,v.pitch+dy*.008)) })) }}
+  }, [surface, radius, view, axes, size, colors, cuts, hover])
+  const scale = Math.min(size.width, size.height) / ((radius * 2 + 3) * 1.8) * view.zoom
+  const vectors = ([ [1,0,0], [0,1,0], [0,0,1] ] as Point[]).map(point => {
+    const [x,y] = rotatePoint(point, view)
+    return [x,-y]
+  })
+  const clipped = cuts.some(value => value < radius)
+  const side = radius*2+1
+  const shown = colors.filter((color,index) => color && index%side-radius<=cuts[0] && radius-Math.floor(index/side)%side<=cuts[1] && Math.floor(index/(side*side))-radius<=cuts[2]).length
+  return <div className="voxel-viewport" data-cuts={cuts.join(',')} data-visible-voxels={shown}>
+    <canvas ref={canvas} aria-label={label} tabIndex={0} data-view={`${view.yaw},${view.pitch},${view.zoom}`} data-voxels={colors.filter(Boolean).length}
+      onPointerDown={e => { setPointer(null); drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId }; e.currentTarget.setPointerCapture(e.pointerId) }}
+      onPointerMove={e => { const last = drag.current; if (!last) { const box=e.currentTarget.getBoundingClientRect(); setPointer({ x:e.clientX-box.left,y:e.clientY-box.top,view,cuts,colors,size }); return } if (last.id !== e.pointerId) return; const dx = e.clientX-last.x, dy = e.clientY-last.y; drag.current = { x:e.clientX,y:e.clientY,id:e.pointerId }; setView(v => ({ ...v,yaw:v.yaw+dx*.008,pitch:Math.max(-1.45,Math.min(1.45,v.pitch+dy*.008)) })) }}
+      onPointerLeave={() => setPointer(null)}
       onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }} onLostPointerCapture={() => { drag.current = null }}
       onKeyDown={e => { if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-'].includes(e.key)) return; e.preventDefault(); setView(v => ({ yaw:v.yaw+(e.key==='ArrowLeft'?-.1:e.key==='ArrowRight'?.1:0),pitch:Math.max(-1.45,Math.min(1.45,v.pitch+(e.key==='ArrowUp'?.1:e.key==='ArrowDown'?-.1:0))),zoom:Math.max(.4,Math.min(4,v.zoom*(e.key==='+'?1.1:e.key==='-'?1/1.1:1))) })) }}/>
-    <div className="voxel-view-actions"><button aria-pressed={axes} onClick={() => setAxes(!axes)}>坐标辅助</button><button onClick={() => setView(initial)}>重置视角</button></div>
-    <span className="voxel-gesture">拖动旋转 · 滚轮缩放 · 方向键旋转</span>
+    {hover && pointer && <p className="coordinate voxel-coordinate" role="tooltip" style={{left:Math.max(4,Math.min(pointer.x+12,size.width-280)),top:Math.max(4,pointer.y-34)}}><span>坐标:(</span><span className="coordinate-x">x: {hover.voxel[0]}</span><span>, </span><span className="coordinate-y">y: {hover.voxel[1]}</span><span>, </span><span className="coordinate-z">z: {hover.voxel[2]}</span><span>), </span><span className="coordinate-color">颜色: <i className="coordinate-swatch" style={{backgroundColor:palette[hover.color]}}/>{colorNames[hover.color]}</span></p>}
+    {axes && vectors.map(([vx,vy], axis) => {
+      if (Math.hypot(vx,vy) < .08) return null
+      const label = ['X','Y','Z'][axis]
+      return <button key={label} className="voxel-cut-handle" role="slider" aria-label={`${label} 轴剖切`} aria-valuemin={-radius-1} aria-valuemax={radius} aria-valuenow={cuts[axis]} aria-valuetext={`保留 ${label} ≤ ${cuts[axis]} 的体素`} title={`拖动剖切 ${label}；方向键逐层调整`}
+        style={{ left: size.width/2+vx*scale*(cuts[axis]+.5), top:size.height/2+vy*scale*(cuts[axis]+.5), color:['#ff6b6b','#6ef09a','#61b5ff'][axis] }}
+        onPointerDown={e => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); cutDrag.current={axis,x:e.clientX,y:e.clientY,value:cuts[axis],dx:vx*scale,dy:vy*scale} }}
+        onPointerMove={e => { const d=cutDrag.current; if (!d || d.axis!==axis) return; const delta=((e.clientX-d.x)*d.dx+(e.clientY-d.y)*d.dy)/(d.dx*d.dx+d.dy*d.dy); const value=Math.max(-radius-1,Math.min(radius,Math.round(d.value+delta))); setCuts(previous => { const next: Point=[...previous]; next[axis]=value; return next }) }}
+        onPointerUp={() => { cutDrag.current=null }} onPointerCancel={() => { cutDrag.current=null }} onLostPointerCapture={() => { cutDrag.current=null }}
+        onKeyDown={e => { if (!['ArrowLeft','ArrowDown','ArrowRight','ArrowUp','Home','End'].includes(e.key)) return; e.preventDefault(); setCuts(previous => { const next: Point=[...previous]; next[axis]=e.key==='Home'?-radius-1:e.key==='End'?radius:Math.max(-radius-1,Math.min(radius,next[axis]+(['ArrowLeft','ArrowDown'].includes(e.key)?-1:1))); return next }) }}>{label}</button>
+    })}
+    {showControls && <div className="voxel-view-actions"><button disabled={!clipped} onClick={() => setCuts([radius,radius,radius])}>恢复完整模型</button><button aria-pressed={axes} onClick={() => setAxes(!axes)}>坐标辅助</button><button onClick={() => setView(initial)}>重置视角</button></div>}
+    {clipped && <span className="voxel-cut-status" role="status">剖切预览 · 显示 {shown} / {colors.filter(Boolean).length} 个体素 · X≤{cuts[0]} Y≤{cuts[1]} Z≤{cuts[2]}</span>}
+    <span className="voxel-gesture">拖动轴上手柄剖切 · 拖动空白旋转 · 滚轮缩放</span>
   </div>
 }

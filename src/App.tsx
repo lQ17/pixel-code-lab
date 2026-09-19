@@ -1,3 +1,4 @@
+import { useVoxelControls } from './hooks/useVoxelControls'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { levels, palette, colorNames, starterCode } from './engine/levels'
 import { evaluate, targetColors } from './engine/evaluate'
@@ -10,7 +11,7 @@ import { useProgress } from './hooks/useProgress'
 import { HelpDialog } from './components/HelpDialog'
 import { LevelGlyph, PixelMark } from './components/GameIcons'
 import { VoxelCanvas } from './renderers/VoxelCanvas'
-import { voxelExamples, voxelRadius, voxelStarter } from './engine/voxel'
+import { voxelExamples, voxelRadius, voxelStarter, voxelReference } from './engine/voxel'
 import './App.css'
 
 const CodeEditor = lazy(() => import('./components/CodeEditor'))
@@ -24,6 +25,9 @@ export default function App() {
   const is3d = mode === '3d'
   const activeId = is3d ? 'voxel' : levelId
   const template = is3d ? voxelStarter : starterCode
+  const voxelControls = useVoxelControls(voxelRadius)
+  const exampleIndex = progress.voxelExample ?? 0
+  const reference = useMemo(() => voxelReference(exampleIndex), [exampleIndex])
   const [showHelp, setShowHelp] = useState(!progress.introSeen)
   const [works, setWorks] = useState<Record<string, Work>>({})
   const [status, setStatus] = useState<RunnerStatus>('loading')
@@ -108,7 +112,7 @@ export default function App() {
     if (code !== voxelStarter && code !== source && !window.confirm('载入示例将替换当前三维代码，是否继续？')) return
     generation.current++
     runner.current?.stop()
-    update({ voxelCode: source }, true)
+    update({ voxelCode: source, voxelExample: voxelExamples.findIndex(example => example.code === source) }, true)
     setError(''); setLogs(''); setErrorLocation(undefined)
   }
   return <main className="arcade">
@@ -132,7 +136,10 @@ export default function App() {
           <div className="palette-dock"><div className="dock-label"><h2>调色模块</h2><span className="micro">RETURN 0—8</span></div><div className="palette">{palette.map((color, index) => <span key={index} title={`${index} · ${colorNames[index]}`}><i style={{ background: index === 0 ? 'transparent' : color }} className={index === 0 ? 'empty-color' : ''}/><b>{index}</b><em>{colorNames[index]}</em></span>)}</div></div>
           <div className="storage-status" data-testid="storage-status" aria-live="polite"><span className={saveState === 'error' ? 'save-error' : ''}>{saveState === 'saved' ? '◆ 已保存到当前浏览器' : saveState === 'pending' ? '◇ 正在保存…' : message}</span>{saveState === 'error' && <button onClick={retrySave}>重试保存</button>}</div>
         </section>
-        {is3d ? <section className="voxel-panel game-panel"><header className="panel-heading"><div><span className="micro">YOUR VOXEL WORLD</span><h2>三维作品</h2></div><span className="tag">17 × 17 × 17</span></header><div className="voxel-summary" aria-live="polite"><span data-testid="voxel-status">{status === 'running' ? '生成中…' : work ? `${work.colors.filter(Boolean).length} 个体素 · ${isHistorical ? '历史结果' : '已生成'}` : '等待运行'}</span><span>{work ? `${Math.round(work.elapsedMs)} ms` : '自由创作 · 无需匹配目标'}</span></div><VoxelCanvas colors={work?.colors ?? []} radius={voxelRadius}/>{isHistorical && <p className="voxel-history">当前显示上次成功运行的作品，请重新运行更新。</p>}<div className="voxel-guide"><h2>用代码定义每一个方块</h2><p>系统逐个调用 <code>voxel(x, y, z)</code>，每个坐标范围为 −8～8。返回 0 留空，返回 1～8 显示对应颜色的方块。</p><p>原点在中心，Y 向上，X / Z 构成水平面。空间边框、外侧刻度与中心虚线轴随视角旋转；三维暂不支持移动原点。可从左侧载入示例，修改后点击运行。</p></div></section> : <div className="previews"><div className="view-toolbar"><span><i aria-hidden="true">⌘</i> 两图联动 <b>{Math.round(view.zoom * 100)}%</b></span></div>
+        {is3d ? <div className="voxel-previews">
+          <section className="voxel-panel game-panel"><header className="panel-heading"><div><span className="micro">REFERENCE MODEL</span><h2>参考图 · {voxelExamples[exampleIndex].title}</h2></div><span className="tag">17 × 17 × 17 · 两图联动</span></header><VoxelCanvas colors={reference} radius={voxelRadius} controls={voxelControls} label="三维参考图画布"/></section>
+          <section className="voxel-panel game-panel"><header className="panel-heading"><div><span className="micro">YOUR VOXEL WORLD</span><h2>我的作品</h2></div><span className="tag" data-testid="voxel-status">{status === 'running' ? '生成中…' : work ? `${work.colors.filter(Boolean).length} 个体素 · ${isHistorical ? '历史结果' : '已生成'}` : '等待运行'}</span></header><VoxelCanvas colors={work?.colors ?? []} radius={voxelRadius} controls={voxelControls} showControls={false}/>{isHistorical && <p className="voxel-history">当前显示上次成功运行的作品，请重新运行更新。</p>}</section>
+        </div> : <div className="previews"><div className="view-toolbar"><span><i aria-hidden="true">⌘</i> 两图联动 <b>{Math.round(view.zoom * 100)}%</b></span></div>
           <section className="board-panel game-panel target-panel"><header className="panel-heading"><div><span className="micro">TARGET / 0{levelNumber}</span><h2>目标图 · {level.title}</h2></div><span className="tag">{size} × {size}</span></header><div className="board-body board-body--solo"><PixelCanvas key={`target-${levelId}`} colors={target} radius={level.radius} label="目标图画布" view={view} setView={setView} axisMode={axisMode} origin={work?.origin ?? initialOrigin}/><button className="view-axis-button" aria-label="调整坐标系显示方式" aria-pressed={axisMode === 'center'} title={`坐标系：${axisMode === 'edge' ? '边缘轴' : '居中轴'}，点击切换`} onClick={() => setAxisMode(previous => previous === 'edge' ? 'center' : 'edge')}>坐标系</button><button className="view-reset-button" onClick={() => setView(initialView)}>重置视图</button></div></section>
           <section className={`board-panel game-panel result-panel ${work?.passed && !isHistorical ? 'is-cleared' : ''}`}><header className="panel-heading"><div><span className="micro">YOUR CREATION</span><h2>我的作品</h2></div><span className="tag">{status === 'running' ? '绘制中' : work ? isHistorical ? '历史结果' : '已生成' : '待运行'}</span></header><div className={`board-body result-board-body ${work ? '' : 'board-body--solo'}`}><PixelCanvas key={`work-${levelId}`} colors={work?.colors ?? blank} radius={level.radius} label="学生作品画布" view={view} setView={setView} axisMode={axisMode} origin={work?.origin ?? initialOrigin}/>{work && <div className="board-info result-info"><div className={work.passed ? 'clear-emblem' : 'match-emblem'} aria-hidden="true">{work.passed ? '★' : '◇'}</div><div className={`score ${work.passed ? 'success' : ''}`} data-testid="score"><span className="micro">匹配率</span><strong>{work.percent.toFixed(1)}<em>%</em></strong><span className="score-label">{work.passed ? '通关！' : '尚未匹配'}</span><small>{Math.round(work.elapsedMs)} ms</small></div><div className="match-meter" aria-hidden="true"><i style={{ width: `${work.percent}%` }}/></div>{isHistorical && <p className="historical">当前显示上次成功运行的结果，请以重新运行为准。</p>}</div>}</div></section>
         </div>}
