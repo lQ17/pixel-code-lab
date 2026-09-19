@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { levels } from '../engine/levels'
+import { voxelTargetIds } from '../engine/voxel'
 
 export const STORAGE_KEY = 'pixel-code-lab.progress'
 export interface Progress {
@@ -11,6 +12,7 @@ export interface Progress {
   mode?: '2d' | '3d'
   voxelCode?: string
   voxelExample?: number
+  voxelPassed?: Record<string, boolean>
 }
 const empty = (): Progress => ({ schemaVersion: 1, codes: {}, passed: {}, levelId: levels[0].id, introSeen: false })
 export function parseProgress(raw: string | null): Progress {
@@ -32,7 +34,16 @@ export function parseProgress(raw: string | null): Progress {
   if (data.voxelExample !== undefined && (!Number.isInteger(data.voxelExample) || Number(data.voxelExample) < 0 || Number(data.voxelExample) > 2)) throw new Error('无效三维参考图')
   if (data.mode !== undefined && data.mode !== '2d' && data.mode !== '3d') throw new Error('无效模式')
   if (data.voxelCode !== undefined && typeof data.voxelCode !== 'string') throw new Error('无效三维代码')
-  return { schemaVersion: 1, codes, passed, levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
+  const voxelPassed: Record<string, boolean> = {}
+  if (data.voxelPassed !== undefined) {
+    if (!data.voxelPassed || typeof data.voxelPassed !== 'object' || Array.isArray(data.voxelPassed)) throw new Error('无效三维通关记录')
+    for (const id of voxelTargetIds) {
+      const done = (data.voxelPassed as Record<string, unknown>)[id]
+      if (done !== undefined && typeof done !== 'boolean') throw new Error('无效三维通关记录')
+      if (typeof done === 'boolean') voxelPassed[id] = done
+    }
+  }
+  return { schemaVersion: 1, codes, passed, voxelPassed, levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
 }
 function load() {
   try {

@@ -11,7 +11,7 @@ import { useProgress } from './hooks/useProgress'
 import { HelpDialog } from './components/HelpDialog'
 import { LevelGlyph, PixelMark } from './components/GameIcons'
 import { VoxelCanvas } from './renderers/VoxelCanvas'
-import { voxelExamples, voxelRadius, voxelStarter, voxelReference } from './engine/voxel'
+import { voxelExamples, voxelRadius, voxelStarter, voxelReference, voxelTargetIds } from './engine/voxel'
 import './App.css'
 
 const CodeEditor = lazy(() => import('./components/CodeEditor'))
@@ -23,7 +23,7 @@ export default function App() {
   const { levelId, codes, passed } = progress
   const mode = progress.mode ?? '2d'
   const is3d = mode === '3d'
-  const activeId = is3d ? 'voxel' : levelId
+  const activeId = is3d ? voxelTargetIds[progress.voxelExample ?? 0] : levelId
   const template = is3d ? voxelStarter : starterCode
   const voxelControls = useVoxelControls(voxelRadius)
   const exampleIndex = progress.voxelExample ?? 0
@@ -55,7 +55,9 @@ export default function App() {
   const work = works[activeId]
   const isHistorical = work && (stale[activeId] || work.source !== code)
   const levelNumber = levels.findIndex(item => item.id === levelId) + 1
-  const completed = levels.filter(item => passed[item.id]).length
+  const progressIds = is3d ? voxelTargetIds : levels.map(item => item.id)
+  const currentPassed = is3d ? progress.voxelPassed ?? {} : passed
+  const completed = progressIds.filter(id => currentPassed[id]).length
   const size = level.radius * 2 + 1
 
   async function run() {
@@ -68,11 +70,11 @@ export default function App() {
     try {
       const result = await runner.current.run(source, is3d ? voxelRadius : level.radius, mode)
       if (generation.current !== ticket) return
-      const score = is3d ? { passed: false, percent: 0 } : evaluate(target, result.colors)
+      const score = evaluate(is3d ? reference : target, result.colors)
       setWorks(previous => ({ ...previous, [selected]: { ...score, colors: result.colors, origin: result.origin, elapsedMs: result.elapsedMs, source } }))
       setStale(previous => ({ ...previous, [selected]: false }))
       setLogs(result.logs)
-      if (score.passed) update({ passed: { ...passed, [selected]: true } }, true)
+      if (score.passed) update(is3d ? { voxelPassed: { ...progress.voxelPassed, [selected]: true } } : { passed: { ...passed, [selected]: true } }, true)
     } catch (failure) {
       if (generation.current !== ticket) return
       if (failure instanceof RunFailure) {
@@ -119,11 +121,11 @@ export default function App() {
     <header className="game-header">
       <div className="brand"><PixelMark/><div><h1>{is3d ? '体素创作实验室' : '像素编程挑战'}</h1><span className="micro">PIXEL PROTOCOL / MISSION CONTROL</span></div></div>
       <nav className="mode-switch" aria-label="空间模式"><button aria-pressed={!is3d} onClick={() => switchMode('2d')}>2D 像素挑战</button><button aria-pressed={is3d} onClick={() => switchMode('3d')}>3D 体素创作</button></nav>
-      <div className="header-progress"><span className="micro">CHALLENGE PROGRESS</span><div className="progress-slots" aria-label={`已通关 ${completed} / ${levels.length} 关`}>{levels.map(item => <i key={item.id} className={passed[item.id] ? 'filled' : ''}/>)}</div><strong>{completed}<em> / {levels.length}</em></strong></div>
+      <div className="header-progress"><span className="micro">CHALLENGE PROGRESS</span><div className="progress-slots" aria-label={`已通关 ${completed} / ${progressIds.length} 关`}>{progressIds.map(id => <i key={id} className={currentPassed[id] ? 'filled' : ''}/>)}</div><strong>{completed}<em> / {progressIds.length}</em></strong></div>
       {!is3d && <button className="help-button" onClick={() => setShowHelp(true)}><span aria-hidden="true">?</span> 使用说明</button>}
     </header>
     <div className="game-shell">
-      {is3d ? <aside className="level-rail voxel-rail"><div className="rail-heading"><span className="micro">VOXEL LAB</span><h2>自由创作</h2><p>从一个想法开始。</p></div><nav aria-label="三维示例">{voxelExamples.map((example, index) => <button className="level-button" key={example.title} onClick={() => loadExample(example.code)}><span className="micro">EXAMPLE 0{index+1}</span><strong>{example.title}</strong><span className="level-bottom">载入示例 →</span></button>)}</nav><div className="rail-bottom"><p>改变坐标条件，<br/>让想法成为形状。</p></div></aside> : <aside className="level-rail"><div className="rail-heading"><span className="micro">SELECT STAGE</span><h2>选择关卡</h2><p>任务已就绪，选择目标。</p></div>
+      {is3d ? <aside className="level-rail voxel-rail"><div className="rail-heading"><span className="micro">VOXEL LAB</span><h2>自由创作</h2><p>从一个想法开始。</p></div><nav aria-label="三维示例">{voxelExamples.map((example, index) => <button className={`level-button ${index === exampleIndex ? 'active' : ''} ${currentPassed[voxelTargetIds[index]] ? 'completed' : ''}`} aria-pressed={index === exampleIndex} key={example.title} onClick={() => loadExample(example.code)}><span className="micro">EXAMPLE 0{index+1}</span><strong>{example.title}</strong><span className="level-bottom">{currentPassed[voxelTargetIds[index]] ? '✓ 已通关 · 载入示例 →' : '载入示例 →'}</span></button>)}</nav><div className="rail-bottom"><p>改变坐标条件，<br/>让想法成为形状。</p></div></aside> : <aside className="level-rail"><div className="rail-heading"><span className="micro">SELECT STAGE</span><h2>选择关卡</h2><p>任务已就绪，选择目标。</p></div>
         <nav aria-label="关卡">{levels.map((item, index) => <button key={item.id} className={`level-button ${item.id === levelId ? 'active' : ''} ${passed[item.id] ? 'completed' : ''}`} aria-pressed={item.id === levelId} onClick={() => switchLevel(item.id)}><span className="level-top"><span className="micro">STAGE 0{index + 1}</span><span aria-hidden="true">{passed[item.id] ? '◆' : '◇'}</span></span><LevelGlyph kind={item.id}/><strong>{item.title}</strong><span className="level-bottom">{passed[item.id] ? '✓ 已通关' : item.id === levelId ? '正在挑战' : '开始挑战'}<b aria-hidden="true">→</b></span></button>)}</nav>
         <div className="rail-bottom"><span className="micro">YOUR MISSION</span><p>观察像素。<br/>发现规律。<br/><strong>用代码复现它。</strong></p><div className="tiny-pixels" aria-hidden="true"><i/><i/><i/><i/><i/></div></div>
       </aside>}
@@ -138,7 +140,7 @@ export default function App() {
         </section>
         {is3d ? <div className="voxel-previews">
           <section className="voxel-panel game-panel"><header className="panel-heading"><div><span className="micro">REFERENCE MODEL</span><h2>参考图 · {voxelExamples[exampleIndex].title}</h2></div><span className="tag">17 × 17 × 17 · 两图联动</span></header><VoxelCanvas colors={reference} radius={voxelRadius} controls={voxelControls} label="三维参考图画布"/></section>
-          <section className="voxel-panel game-panel"><header className="panel-heading"><div><span className="micro">YOUR VOXEL WORLD</span><h2>我的作品</h2></div><span className="tag" data-testid="voxel-status">{status === 'running' ? '生成中…' : work ? `${work.colors.filter(Boolean).length} 个体素 · ${isHistorical ? '历史结果' : '已生成'}` : '等待运行'}</span></header><VoxelCanvas colors={work?.colors ?? []} radius={voxelRadius} controls={voxelControls} showControls={false}/>{isHistorical && <p className="voxel-history">当前显示上次成功运行的作品，请重新运行更新。</p>}</section>
+          <section className={`voxel-panel game-panel ${work?.passed && !isHistorical ? 'is-cleared' : ''}`}><header className="panel-heading"><div><span className="micro">YOUR VOXEL WORLD</span><h2>我的作品</h2></div><span className="tag" data-testid="voxel-status">{status === 'running' ? '生成中…' : work ? `${work.colors.filter(Boolean).length} 个体素 · ${isHistorical ? '历史结果' : '已生成'}` : '等待运行'}</span></header><div className="voxel-result-wrap"><VoxelCanvas colors={work?.colors ?? []} radius={voxelRadius} controls={voxelControls} showControls={false}/>{work && <div className={`voxel-score ${work.passed ? 'success' : ''}`} data-testid="voxel-score" aria-live="polite"><span>{isHistorical ? '历史匹配率' : '匹配率'}</span><strong>{work.percent.toFixed(1)}%</strong><span>{work.passed ? '通关！' : '尚未匹配'}</span><small>按完整模型判定</small></div>}</div>{isHistorical && <p className="voxel-history">当前显示上次成功运行的作品，请重新运行更新。</p>}</section>
         </div> : <div className="previews"><div className="view-toolbar"><span><i aria-hidden="true">⌘</i> 两图联动 <b>{Math.round(view.zoom * 100)}%</b></span></div>
           <section className="board-panel game-panel target-panel"><header className="panel-heading"><div><span className="micro">TARGET / 0{levelNumber}</span><h2>目标图 · {level.title}</h2></div><span className="tag">{size} × {size}</span></header><div className="board-body board-body--solo"><PixelCanvas key={`target-${levelId}`} colors={target} radius={level.radius} label="目标图画布" view={view} setView={setView} axisMode={axisMode} origin={work?.origin ?? initialOrigin}/><button className="view-axis-button" aria-label="调整坐标系显示方式" aria-pressed={axisMode === 'center'} title={`坐标系：${axisMode === 'edge' ? '边缘轴' : '居中轴'}，点击切换`} onClick={() => setAxisMode(previous => previous === 'edge' ? 'center' : 'edge')}>坐标系</button><button className="view-reset-button" onClick={() => setView(initialView)}>重置视图</button></div></section>
           <section className={`board-panel game-panel result-panel ${work?.passed && !isHistorical ? 'is-cleared' : ''}`}><header className="panel-heading"><div><span className="micro">YOUR CREATION</span><h2>我的作品</h2></div><span className="tag">{status === 'running' ? '绘制中' : work ? isHistorical ? '历史结果' : '已生成' : '待运行'}</span></header><div className={`board-body result-board-body ${work ? '' : 'board-body--solo'}`}><PixelCanvas key={`work-${levelId}`} colors={work?.colors ?? blank} radius={level.radius} label="学生作品画布" view={view} setView={setView} axisMode={axisMode} origin={work?.origin ?? initialOrigin}/>{work && <div className="board-info result-info"><div className={work.passed ? 'clear-emblem' : 'match-emblem'} aria-hidden="true">{work.passed ? '★' : '◇'}</div><div className={`score ${work.passed ? 'success' : ''}`} data-testid="score"><span className="micro">匹配率</span><strong>{work.percent.toFixed(1)}<em>%</em></strong><span className="score-label">{work.passed ? '通关！' : '尚未匹配'}</span><small>{Math.round(work.elapsedMs)} ms</small></div><div className="match-meter" aria-hidden="true"><i style={{ width: `${work.percent}%` }}/></div>{isHistorical && <p className="historical">当前显示上次成功运行的结果，请以重新运行为准。</p>}</div>}</div></section>

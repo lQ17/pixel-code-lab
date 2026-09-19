@@ -1,5 +1,6 @@
 export const voxelRadius = 8
 export const voxelStarter = 'def voxel(x, y, z):\n    return 0\n'
+export const voxelTargetIds = ['voxel-cube', 'voxel-sphere', 'voxel-stairs'] as const
 export const voxelExamples = [
   { title: '立方体', code: 'def voxel(x, y, z):\n    if abs(x) <= 3 and abs(y) <= 3 and abs(z) <= 3:\n        return 2\n    return 0\n' },
   { title: '球体', code: 'def voxel(x, y, z):\n    if x*x + y*y + z*z <= 36:\n        return 5\n    return 0\n' },
