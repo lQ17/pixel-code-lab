@@ -13,8 +13,11 @@ export interface Progress {
   voxelCode?: string
   voxelExample?: number
   voxelPassed?: Record<string, boolean>
+  voxelActivity?: 'challenge' | 'create'
+  voxelLevelId?: string
+  voxelCodes?: Record<string, string>
 }
-const empty = (): Progress => ({ schemaVersion: 1, codes: {}, passed: {}, levelId: levels[0].id, introSeen: false })
+const empty = (): Progress => ({ schemaVersion: 1, codes: {}, passed: {}, levelId: levels[0].id, introSeen: false, voxelCodes: {} })
 export function parseProgress(raw: string | null): Progress {
   if (raw === null) return empty()
   const value: unknown = JSON.parse(raw)
@@ -34,6 +37,21 @@ export function parseProgress(raw: string | null): Progress {
   if (data.voxelExample !== undefined && (!Number.isInteger(data.voxelExample) || Number(data.voxelExample) < 0 || Number(data.voxelExample) > 2)) throw new Error('无效三维参考图')
   if (data.mode !== undefined && data.mode !== '2d' && data.mode !== '3d') throw new Error('无效模式')
   if (data.voxelCode !== undefined && typeof data.voxelCode !== 'string') throw new Error('无效三维代码')
+  if (data.voxelActivity !== undefined && data.voxelActivity !== 'challenge' && data.voxelActivity !== 'create') throw new Error('无效三维玩法')
+  if (data.voxelLevelId !== undefined && !voxelTargetIds.some(id => id === data.voxelLevelId)) throw new Error('无效三维关卡')
+  const voxelLevelId = (data.voxelLevelId as string | undefined) ?? voxelTargetIds[data.voxelCodes === undefined ? Number(data.voxelExample ?? 0) : 0]
+  const voxelCodes: Record<string, string> = {}
+  if (data.voxelCodes !== undefined) {
+    if (!data.voxelCodes || typeof data.voxelCodes !== 'object' || Array.isArray(data.voxelCodes)) throw new Error('无效三维关卡代码')
+    for (const id of voxelTargetIds) {
+      const code = (data.voxelCodes as Record<string, unknown>)[id]
+      if (code !== undefined && typeof code !== 'string') throw new Error('无效三维关卡代码')
+      if (typeof code === 'string') voxelCodes[id] = code
+    }
+  } else if (typeof data.voxelCode === 'string') {
+    // Only migrate legacy saves once; an existing map, including an empty one, is authoritative.
+    voxelCodes[voxelLevelId] = data.voxelCode
+  }
   const voxelPassed: Record<string, boolean> = {}
   if (data.voxelPassed !== undefined) {
     if (!data.voxelPassed || typeof data.voxelPassed !== 'object' || Array.isArray(data.voxelPassed)) throw new Error('无效三维通关记录')
@@ -43,7 +61,7 @@ export function parseProgress(raw: string | null): Progress {
       if (typeof done === 'boolean') voxelPassed[id] = done
     }
   }
-  return { schemaVersion: 1, codes, passed, voxelPassed, levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
+  return { schemaVersion: 1, codes, passed, voxelPassed, voxelCodes, voxelLevelId, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
 }
 function load() {
   try {

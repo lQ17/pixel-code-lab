@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 test('三维可见体素悬停、颜色、离开隐藏与剖切截面',async({page})=>{
- await page.setViewportSize({width:1440,height:900});await page.goto('/');await page.getByRole('button',{name:'开始挑战',exact:true}).click();await page.getByRole('button',{name:'3D 体素创作',exact:true}).click();await page.getByRole('button',{name:/立方体.*载入示例/}).click();await page.getByRole('button',{name:'运行',exact:true}).click();await expect(page.getByLabel('三维体素画布',{exact:true})).toHaveAttribute('data-voxels','343');
+ await page.setViewportSize({width:1440,height:900});await page.goto('/');await page.getByRole('button',{name:'开始挑战',exact:true}).click();await page.getByRole('button',{name:'3D 体素',exact:true}).click();await page.getByRole('button', { name: /立方体/ }).click(); await page.getByRole('button', { name: '载入示例', exact: true }).click();await page.getByRole('button',{name:'运行',exact:true}).click();await expect(page.getByLabel('三维体素画布',{exact:true})).toHaveAttribute('data-voxels','343');
  for(const name of ['三维参考图画布','三维体素画布']){
  const canvas=page.getByLabel(name,{exact:true}),box=(await canvas.boundingBox())!;const [yaw,pitch,zoom]=(await canvas.getAttribute('data-view'))!.split(',').map(Number);const scale=Math.min(box.width,box.height)/34.2*zoom;
  const hover=async(x:number,y:number,z:number)=>{const a=Math.cos(yaw)*x+Math.sin(yaw)*z,b=-Math.sin(yaw)*x+Math.cos(yaw)*z;await page.mouse.move(box.x+box.width/2+a*scale,box.y+box.height/2-(Math.cos(pitch)*y-Math.sin(pitch)*b)*scale)};
