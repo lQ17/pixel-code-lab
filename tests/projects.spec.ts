@@ -1,12 +1,12 @@
 import { test, expect, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { exportProject, importProject, maxProjectFileBytes, parseProjectLibrary, projectFilename, type VoxelProject } from '../src/engine/projects'
+import { exportProject, importProject, maxProjectFileBytes, parseProjectLibrary, projectFilename, type Project } from '../src/engine/projects'
 import { parseProgress, STORAGE_KEY } from '../src/hooks/useProgress'
-import { creationDraft } from '../src/hooks/useVoxelLibrary'
+import { creationDraft } from '../src/hooks/useProjectLibrary'
 
 const sourceA = 'def voxel(x, y, z):\n    return 4 if (x, y, z) == (1, 2, 3) else 0\n'
 const sourceB = 'def voxel(x, y, z):\n    return 2 if (x, y, z) == (0, 0, 0) else 0\n'
-const project: VoxelProject = { id: 'saved-model', name: '旧作品', code: sourceB, referenceId: 'voxel-cylinder', createdAt: '2026-09-21T00:00:00.000Z', updatedAt: '2026-09-21T00:01:00.000Z' }
+const project: Project = { id: 'saved-model', name: '旧作品', code: sourceB, referenceId: 'voxel-cylinder', createdAt: '2026-09-21T00:00:00.000Z', updatedAt: '2026-09-21T00:01:00.000Z' }
 const legacy = { schemaVersion: 1, codes: { square: 'keep 2d' }, passed: { square: true }, levelId: 'square', introSeen: true, mode: '3d', voxelActivity: 'create', voxelCodes: { 'voxel-house': 'keep challenge' }, voxelPassed: { 'voxel-house': true }, voxelCode: sourceA, voxelReferenceId: 'voxel-sphere' }
 
 async function seed(page: Page, value: unknown = legacy) {
@@ -128,7 +128,7 @@ test('打开与新建前取消保留原文、确认备份草稿、运行取消�
   await page.getByRole('button', { name: '打开 旧作品', exact: true }).click()
   let state = await saved(page)
   expect(state.voxelProjects).toHaveLength(2)
-  expect(state.voxelProjects.find((item: VoxelProject) => item.id !== project.id).code).toBe(sourceA)
+  expect(state.voxelProjects.find((item: Project) => item.id !== project.id).code).toBe(sourceA)
   expect(state.voxelCode).toBe(sourceB)
   await page.getByRole('button', { name: '关闭作品库' }).click()
   await write(page, 'while True:\n    pass')
@@ -141,7 +141,7 @@ test('打开与新建前取消保留原文、确认备份草稿、运行取消�
   state = await saved(page)
   expect(state.voxelProjectId).toBeNull()
   expect(state.voxelProjects).toHaveLength(3)
-  expect(state.voxelProjects.find((item: VoxelProject) => item.name === '旧作品（草稿）').code).toContain('while True')
+  expect(state.voxelProjects.find((item: Project) => item.name === '旧作品（草稿）').code).toContain('while True')
   await page.getByRole('button', { name: '关闭作品库' }).click()
   await expect(page.locator('.view-lines')).toContainText('return 0')
   await expect(run).toBeEnabled()
@@ -168,7 +168,7 @@ test('导出包含当前编辑、导入不替换草稿或执行、重复导入�
     await expect(page.locator('.project-list li')).toHaveCount(i + 1)
   }
   const state = await saved(page)
-  expect(state.voxelProjects.map((item: VoxelProject) => item.name)).toEqual(['导出模型', '导出模型（2）'])
+  expect(state.voxelProjects.map((item: Project) => item.name)).toEqual(['导出模型', '导出模型（2）'])
   expect(state.voxelProjects[0].id).not.toBe(state.voxelProjects[1].id)
   expect(state.voxelCode).toBe(sourceA)
   expect(state.voxelProjectId).toBeUndefined()

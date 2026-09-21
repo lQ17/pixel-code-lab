@@ -1,8 +1,15 @@
-import { useEffect, useRef } from 'react'
+import { projectImage, downloadPng } from '../renderers/projectImage'
+import type { SpaceMode } from '../runners/types'
+import { useEffect, useMemo, useRef } from 'react'
 import { maxProjectName } from '../engine/projects'
-import type { useVoxelLibrary } from '../hooks/useVoxelLibrary'
+import type { useProjectLibrary } from '../hooks/useProjectLibrary'
 
-type Library = ReturnType<typeof useVoxelLibrary>
+type Library = ReturnType<typeof useProjectLibrary>
+
+function Thumbnail({ preview, mode, name }: { preview?: string; mode: SpaceMode; name: string }) {
+  const url = useMemo(() => preview ? projectImage([...preview].map(Number), mode, true).toDataURL() : null, [preview, mode])
+  return url ? <img className="project-thumbnail" src={url} alt={`${name}的预览`} /> : <span className="project-thumbnail project-placeholder">待生成预览</span>
+}
 
 export function ProjectLibrary({ library, onName, onClose }: { library: Library; onName: (name: string) => void; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -14,7 +21,7 @@ export function ProjectLibrary({ library, onName, onClose }: { library: Library;
   }, [])
   const projects = [...library.projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   return <dialog ref={dialog} className="project-dialog" aria-labelledby="project-library-title" onCancel={event => { event.preventDefault(); onClose() }}>
-    <header><div><h2 id="project-library-title">本地作品库</h2><p>三维 Python 作品 · {projects.length} 件</p></div><button onClick={onClose} aria-label="关闭作品库">关闭</button></header>
+    <header><div><h2 id="project-library-title">本地作品库</h2><p>{library.mode === '2d' ? '二维' : '三维'} Python 作品 · {projects.length} 件</p></div><button onClick={onClose} aria-label="关闭作品库">关闭</button></header>
     <form onSubmit={event => { event.preventDefault(); library.save() }}>
       <label htmlFor="project-name">当前作品名称</label>
       <input id="project-name" value={library.name} onChange={event => onName(event.target.value)} maxLength={maxProjectName} placeholder="为作品起个名字" autoFocus />
@@ -29,10 +36,10 @@ export function ProjectLibrary({ library, onName, onClose }: { library: Library;
       if (file) void library.importFile(file)
     }}/></div>
     <ul className="project-list">{projects.map(project => <li key={project.id} data-project-id={project.id}>
-      <div className="project-description"><strong>{project.name}</strong><small>更新于 {new Date(project.updatedAt).toLocaleString('zh-CN', { hour12: false })}{project.id === library.active?.id ? ' · 当前作品' : ''}</small></div>
-      <div className="project-actions"><button onClick={() => library.open(project.id)} aria-label={`打开 ${project.name}`}>打开</button><button onClick={() => library.download(project)} aria-label={`导出 ${project.name}`}>导出</button></div>
+      <Thumbnail preview={project.preview} mode={library.mode} name={project.name}/><div className="project-description"><strong>{project.name}</strong><small>更新于 {new Date(project.updatedAt).toLocaleString('zh-CN', { hour12: false })}{project.id === library.active?.id ? ' · 当前作品' : ''}</small></div>
+      <div className="project-actions"><button onClick={() => library.open(project.id)} aria-label={`打开 ${project.name}`}>打开</button><button onClick={() => library.download(project)} aria-label={`导出 ${project.name}`}>导出</button><button disabled={!project.preview} onClick={() => downloadPng([...project.preview!].map(Number), library.mode, project.name)} aria-label={`导出 PNG ${project.name}`}>PNG</button></div>
     </li>)}</ul>
     {!projects.length && <p className="project-empty">还没有保存的作品。给当前草稿命名后保存，或导入作品文件。</p>}
-    <p className="project-hint">作品保存在当前浏览器，可导出 JSON 备份。打开后重新运行生成画面。</p>
+    <p className="project-hint">作品保存在当前浏览器，可导出 JSON 备份。成功运行后保存可记录缩略图；待生成预览的作品需打开、运行并保存。PNG 为透明背景的完整作品，三维采用固定视角。</p>
   </dialog>
 }

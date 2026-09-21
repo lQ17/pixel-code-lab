@@ -23,5 +23,5 @@ test('三维成绩、剖切无关、独立通关、失败保留、刷新恢复',
  await page.getByRole('button', { name: /球体/ }).click(); await page.getByRole('button', { name: '载入示例', exact: true }).click();await expect(score).toHaveCount(0);await run.click();await expect(score).toContainText('100.0%');await expect(page.getByRole('button',{name:/球体.*已通关/})).toBeVisible()
  await page.getByRole('button',{name:'恢复完整模型'}).click();await page.screenshot({path:'test-results/voxel-scored.png'})
  await page.reload();await expect(score).toHaveCount(0);await expect(page.getByRole('button',{name:/^立方体.*已通关/})).toBeVisible();await expect(page.getByRole('button',{name:/球体.*已通关/})).toBeVisible();await expect(page.getByRole('button',{name:/彩色阶梯.*已通关/})).toHaveCount(0)
- await page.getByRole('button',{name:'2D 像素挑战',exact:true}).click();await expect(page.getByRole('button',{name:/实心正方形.*已通关/})).toHaveCount(0)
+ await page.getByRole('button',{name:'2D 像素',exact:true}).click();await expect(page.getByRole('button',{name:/实心正方形.*已通关/})).toHaveCount(0)
 })

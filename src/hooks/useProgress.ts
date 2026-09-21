@@ -1,7 +1,8 @@
+import { isPixelReferenceId, type PixelReferenceId } from '../engine/pixelCreation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { levels } from '../engine/levels'
 import { defaultVoxelId, isVoxelLevelId, legacyVoxelExampleIds, voxelTargetIds, type VoxelLevelId } from '../engine/voxel'
-import { maxProjectName, parseProjectLibrary, type VoxelProject } from '../engine/projects'
+import { maxProjectName, parseProjectLibrary, type Project } from '../engine/projects'
 
 export const STORAGE_KEY = 'pixel-code-lab.progress'
 export interface Progress {
@@ -11,6 +12,12 @@ export interface Progress {
   levelId: string
   introSeen: boolean
   mode?: '2d' | '3d'
+  pixelActivity?: 'challenge' | 'create'
+  pixelCode?: string
+  pixelReferenceId?: PixelReferenceId
+  pixelProjects?: Project[]
+  pixelProjectId?: string | null
+  pixelDraftName?: string
   voxelCode?: string
   voxelExample?: number
   voxelReferenceId?: VoxelLevelId
@@ -18,7 +25,7 @@ export interface Progress {
   voxelActivity?: 'challenge' | 'create'
   voxelLevelId?: VoxelLevelId
   voxelCodes?: Record<string, string>
-  voxelProjects?: VoxelProject[]
+  voxelProjects?: Project[]
   voxelProjectId?: string | null
   voxelDraftName?: string
 }
@@ -68,10 +75,16 @@ export function parseProgress(raw: string | null): Progress {
       if (typeof done === 'boolean') voxelPassed[id] = done
     }
   }
+  if (data.pixelActivity !== undefined && data.pixelActivity !== 'challenge' && data.pixelActivity !== 'create') throw new Error('无效二维玩法')
+  if (data.pixelCode !== undefined && typeof data.pixelCode !== 'string') throw new Error('无效二维创作代码')
+  if (data.pixelReferenceId !== undefined && !isPixelReferenceId(data.pixelReferenceId)) throw new Error('无效二维参考图')
+  const pixelProjects = parseProjectLibrary(data.pixelProjects, '2d')
+  if (data.pixelProjectId !== undefined && data.pixelProjectId !== null && (typeof data.pixelProjectId !== 'string' || !pixelProjects.some(project => project.id === data.pixelProjectId))) throw new Error('无效的二维当前作品')
+  if (data.pixelDraftName !== undefined && (typeof data.pixelDraftName !== 'string' || data.pixelDraftName.length > maxProjectName)) throw new Error('无效二维草稿名称')
   const voxelProjects = parseProjectLibrary(data.voxelProjects)
   if (data.voxelProjectId !== undefined && data.voxelProjectId !== null && (typeof data.voxelProjectId !== 'string' || !voxelProjects.some(project => project.id === data.voxelProjectId))) throw new Error('无效的当前作品')
   if (data.voxelDraftName !== undefined && (typeof data.voxelDraftName !== 'string' || data.voxelDraftName.length > maxProjectName)) throw new Error('无效的草稿名称')
-  return { schemaVersion: 1, codes, passed, voxelPassed, voxelCodes, voxelLevelId, voxelReferenceId, voxelProjects, voxelProjectId: data.voxelProjectId as Progress['voxelProjectId'], voxelDraftName: data.voxelDraftName as string | undefined, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
+  return { schemaVersion: 1, codes, passed, pixelProjects, pixelActivity: data.pixelActivity as Progress['pixelActivity'], pixelCode: data.pixelCode as string | undefined, pixelReferenceId: data.pixelReferenceId as PixelReferenceId | undefined, pixelProjectId: data.pixelProjectId as Progress['pixelProjectId'], pixelDraftName: data.pixelDraftName as string | undefined, voxelPassed, voxelCodes, voxelLevelId, voxelReferenceId, voxelProjects, voxelProjectId: data.voxelProjectId as Progress['voxelProjectId'], voxelDraftName: data.voxelDraftName as string | undefined, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
 }
 function load() {
   try {

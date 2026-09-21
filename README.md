@@ -12,6 +12,9 @@ npm run dev
 打开终端显示的地址。Monaco 编辑器与 Pyodide 文件均由本站提供，无运行时第三方 CDN。Python 文件在启动/构建前从 npm 包复制至 public/pyodide，不纳入 Git。首次加载 Python 不计入代码的 2 秒执行时限。
 
 ## 功能
+- 二维可切换挑战/自由创作；创作固定 21×21，提供彩色十字、菱形花纹、像素小树参考与显式示例，支持 move_origin，不计成绩。二维和三维草稿、作品库、挑战进度相互独立。
+- 两种创作均支持命名作品和 JSON 导入导出；二维文件须在二维作品库导入，三维文件须在三维作品库导入。
+- 成功运行后保存作品可记录缩略图，未运行的新代码显示「待生成预览」。创作工具栏可导出当前成功结果的 PNG，作品库可直接导出已有预览。PNG 透明背景，二维 840×840，三维完整模型固定视角 1024×1024，不含坐标、高亮或剖切效果。
 - 三个独立关卡全部开放，原点对称且尺寸按关配置。
 - Monaco Python 编辑器：语法着色、行号、缩进、查找、执行错误标记。
 - Pyodide Worker 真实运行、停止、超时终止及重建、加载失败重试。
@@ -35,7 +38,7 @@ npm run dev
 - npm test：构建并启动生产预览，在本机 Microsoft Edge 上运行 Playwright 测试（需安装 Edge）。
 - npm run preview：预览已生成的生产构建。
 
-存档键为 pixel-code-lab.progress，schemaVersion=1；兼容可选三维字段 mode、voxelCode、voxelExample、voxelPassed，并支持 voxelActivity、voxelLevelId、voxelCodes、voxelReferenceId，以及作品库字段 voxelProjects、voxelProjectId、voxelDraftName。三维关卡与创作参考均按稳定 ID 选择，旧 voxelExample 的 0/1/2 固定对应立方体/球体/彩色阶梯，不随列表顺序改变。旧三维代码保留为自由创作代码，同时仅在首次迁移时复制到旧参考对应的挑战关卡；已有分关代码不会被重新迁移覆盖。挑战关卡与创作参考选择分别保存。无账号和自动跨设备同步；可通过导入导出传递作品，清理浏览器数据会移除存档。不同本地端口属于不同来源，不共享存档。二维切关重置视图；三维共享视角与剖切在页面会话中保留，刷新后重置。作品库保存名称、代码、参考与时间，渲染数组和视图不写入存档。
+存档键为 pixel-code-lab.progress，schemaVersion=1；兼容可选三维字段 mode、voxelCode、voxelExample、voxelPassed，并支持 voxelActivity、voxelLevelId、voxelCodes、voxelReferenceId，以及作品库字段 voxelProjects、voxelProjectId、voxelDraftName。三维关卡与创作参考均按稳定 ID 选择，旧 voxelExample 的 0/1/2 固定对应立方体/球体/彩色阶梯，不随列表顺序改变。旧三维代码保留为自由创作代码，同时仅在首次迁移时复制到旧参考对应的挑战关卡；已有分关代码不会被重新迁移覆盖。挑战关卡与创作参考选择分别保存。无账号和自动跨设备同步；可通过导入导出传递作品，清理浏览器数据会移除存档。不同本地端口属于不同来源，不共享存档。二维切关重置视图；三维共享视角与剖切在页面会话中保留，刷新后重置。作品库保存名称、代码、参考与时间，工作区渲染数组和视图不写入存档；已保存作品可含紧凑的 preview 颜色快照用于缩略图和 PNG。二维新增可选 pixelActivity、pixelCode、pixelReferenceId、pixelProjects、pixelProjectId、pixelDraftName。
 
 Python Worker 用于隔离普通执行，不是恶意代码的完整安全边界；不自动安装额外 Python 包。Monaco 是按需加载的独立资源，首次进入编辑器需要下载。当前没有完整 Python 静态语言服务，错误行号来自实际运行。
 
