@@ -36,3 +36,9 @@ h1{font-size:21px;letter-spacing:3px;line-height:1.5}.brand .micro{font-size:9px
 .coordinate-z{color:#61b5ff}.voxel-coordinate{z-index:5}
 .voxel-activity{display:flex;gap:5px;margin:3px 0 20px}.voxel-activity button{flex:1;padding:8px 4px;font-size:11px;white-space:nowrap}.voxel-activity button[aria-pressed=true]{border-color:var(--mint);color:var(--mint);background:#183b3d}.code-tools{display:flex;gap:14px;flex-shrink:0}.file-tab{gap:8px;flex-wrap:wrap}.voxel-rail .level-button strong{margin-top:0}@media(max-width:950px){.voxel-activity{max-width:240px;margin-bottom:12px}}
 .voxel-result-wrap{position:relative;display:flex;flex:1;min-height:0}.voxel-result-wrap>.voxel-viewport{width:100%}.voxel-score{position:absolute;top:16px;right:16px;display:flex;align-items:flex-end;flex-direction:column;gap:3px;padding:8px 10px;background:#0b1b28eb;border:1px solid #37616f;pointer-events:none;color:#91adbf;font-size:10px}.voxel-score strong{font:22px Consolas;color:var(--cyan)}.voxel-score.success strong{color:var(--mint)}.voxel-score small{font-size:9px;color:#688d9c}
+
+/* Seven stages fit typical laptop heights; shorter rails scroll independently. */
+.voxel-activity{flex-shrink:0}
+.voxel-rail nav{overflow-y:auto;min-height:0;gap:8px;padding:2px;align-content:start;scrollbar-width:thin}
+.voxel-rail .level-button{min-height:68px;flex-shrink:0}
+@media(max-width:950px){.voxel-rail nav{max-height:250px}.voxel-rail .level-button{display:flex}}

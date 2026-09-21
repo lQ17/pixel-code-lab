@@ -11,7 +11,7 @@ import { useProgress } from './hooks/useProgress'
 import { HelpDialog } from './components/HelpDialog'
 import { LevelGlyph, PixelMark } from './components/GameIcons'
 import { VoxelCanvas } from './renderers/VoxelCanvas'
-import { voxelExamples, voxelRadius, voxelStarter, voxelReference, voxelTargetIds } from './engine/voxel'
+import { defaultVoxelId, getVoxelLevel, voxelRadius, voxelStarter, voxelReference, voxelTargetIds, type VoxelLevelId } from './engine/voxel'
 import './App.css'
 
 const CodeEditor = lazy(() => import('./components/CodeEditor'))
@@ -25,12 +25,14 @@ export default function App() {
   const is3d = mode === '3d'
   const voxelActivity = progress.voxelActivity ?? 'create'
   const isCreation = is3d && voxelActivity === 'create'
-  const voxelLevelId = progress.voxelLevelId ?? voxelTargetIds[0]
+  const voxelLevelId = progress.voxelLevelId ?? defaultVoxelId
   const activeId = is3d ? isCreation ? 'voxel-creation' : voxelLevelId : levelId
   const template = is3d ? voxelStarter : starterCode
   const voxelControls = useVoxelControls(voxelRadius)
-  const exampleIndex = isCreation ? progress.voxelExample ?? 0 : voxelTargetIds.findIndex(id => id === voxelLevelId)
-  const reference = useMemo(() => voxelReference(exampleIndex), [exampleIndex])
+  const referenceId = isCreation ? progress.voxelReferenceId ?? defaultVoxelId : voxelLevelId
+  const selectedVoxelLevel = getVoxelLevel(referenceId)
+  const voxelLevelNumber = voxelTargetIds.indexOf(referenceId) + 1
+  const reference = useMemo(() => voxelReference(referenceId), [referenceId])
   const [showHelp, setShowHelp] = useState(!progress.introSeen)
   const [works, setWorks] = useState<Record<string, Work>>({})
   const [status, setStatus] = useState<RunnerStatus>('loading')
@@ -123,15 +125,16 @@ export default function App() {
     update({ voxelActivity: next }, true)
     setError(''); setLogs(''); setErrorLocation(undefined)
   }
-  function selectVoxelTarget(index: number) {
-    if (index === exampleIndex) return
+  function selectVoxelTarget(id: VoxelLevelId) {
+    if (id === referenceId) return
     generation.current++
     runner.current?.stop()
-    update(isCreation ? { voxelExample: index } : { voxelLevelId: voxelTargetIds[index] }, true)
+    update(isCreation ? { voxelReferenceId: id } : { voxelLevelId: id }, true)
     setError(''); setLogs(''); setErrorLocation(undefined)
   }
   function loadExample() {
-    const source = voxelExamples[exampleIndex].code
+    const source = selectedVoxelLevel.exampleCode
+    if (source === undefined) return
     if (code !== voxelStarter && code !== source && !window.confirm('载入示例将替换当前三维代码，是否继续？')) return
     generation.current++
     runner.current?.stop()
@@ -148,14 +151,14 @@ export default function App() {
     <div className="game-shell">
       {is3d ? <aside className="level-rail voxel-rail">
         <div className="voxel-activity" role="group" aria-label="三维玩法"><button aria-pressed={!isCreation} onClick={() => switchVoxelActivity('challenge')}>挑战</button><button aria-pressed={isCreation} onClick={() => switchVoxelActivity('create')}>自由创作</button></div>
-        <nav aria-label={isCreation ? '三维参考模型' : '三维关卡'}>{voxelExamples.map((example, index) => <button className={`level-button ${index === exampleIndex ? 'active' : ''} ${!isCreation && currentPassed[voxelTargetIds[index]] ? 'completed' : ''}`} aria-pressed={index === exampleIndex} key={example.title} onClick={() => selectVoxelTarget(index)}><strong>{example.title}</strong>{!isCreation && <span className="level-bottom">{currentPassed[voxelTargetIds[index]] ? '✓ 已通关' : index === exampleIndex ? '正在挑战' : '开始挑战'}</span>}</button>)}</nav>
+        <nav aria-label={isCreation ? '三维参考模型' : '三维关卡'}>{voxelTargetIds.map(id => <button className={`level-button ${id === referenceId ? 'active' : ''} ${!isCreation && currentPassed[id] ? 'completed' : ''}`} aria-pressed={id === referenceId} key={id} onClick={() => selectVoxelTarget(id)}><strong>{getVoxelLevel(id).title}</strong>{!isCreation && <span className="level-bottom">{currentPassed[id] ? '✓ 已通关' : id === referenceId ? '正在挑战' : '开始挑战'}</span>}</button>)}</nav>
       </aside> : <aside className="level-rail"><div className="rail-heading"><span className="micro">SELECT STAGE</span><h2>选择关卡</h2><p>任务已就绪，选择目标。</p></div>
         <nav aria-label="关卡">{levels.map((item, index) => <button key={item.id} className={`level-button ${item.id === levelId ? 'active' : ''} ${passed[item.id] ? 'completed' : ''}`} aria-pressed={item.id === levelId} onClick={() => switchLevel(item.id)}><span className="level-top"><span className="micro">STAGE 0{index + 1}</span><span aria-hidden="true">{passed[item.id] ? '◆' : '◇'}</span></span><LevelGlyph kind={item.id}/><strong>{item.title}</strong><span className="level-bottom">{passed[item.id] ? '✓ 已通关' : item.id === levelId ? '正在挑战' : '开始挑战'}<b aria-hidden="true">→</b></span></button>)}</nav>
         <div className="rail-bottom"><div className="tiny-pixels" aria-hidden="true"><i/><i/><i/><i/><i/></div></div>
       </aside>}
       <div className="workspace">
         <section className="editor-panel game-panel"><header className="panel-heading"><div><span className="micro">CODE TERMINAL</span><h2>代码工作台</h2></div><span className="tag">PYTHON</span></header>
-          <div className="file-tab"><span><i/> {is3d ? isCreation ? 'creation_3d.py' : `voxel_0${exampleIndex + 1}.py` : `challenge_0${levelNumber}.py`}</span><div className="code-tools">{is3d && <button className="text-button" onClick={loadExample}>载入示例</button>}<button className="text-button" onClick={restoreTemplate} disabled={code === template}>恢复初始代码</button></div></div>
+          <div className="file-tab"><span><i/> {is3d ? isCreation ? 'creation_3d.py' : `voxel_0${voxelLevelNumber}.py` : `challenge_0${levelNumber}.py`}</span><div className="code-tools">{is3d && selectedVoxelLevel.exampleCode !== undefined && <button className="text-button" onClick={loadExample}>载入示例</button>}<button className="text-button" onClick={restoreTemplate} disabled={code === template}>恢复初始代码</button></div></div>
           <Suspense fallback={<div className="editor-loading"><PixelMark/><span>正在加载代码编辑器…</span></div>}><CodeEditor key={activeId} value={code} onChange={changeCode} error={errorLocation}/></Suspense>
           <div className="execution-dock"><div className="actions"><button className="run-button" onClick={() => void run()} disabled={status !== 'ready'} aria-label="运行"><span aria-hidden="true">▶</span> 运行代码 <span className="micro">RUN</span></button><button className="stop-button" aria-label="停止" onClick={() => runner.current?.stop()} disabled={status !== 'running'}><span aria-hidden="true">■</span> 停止</button>{status === 'failed' && <button onClick={() => runner.current?.retry()}>重试加载</button>}</div><p className={`runtime-state ${status}`} role="status"><i/>{labels[status]}</p></div>
           <div className="console-output" aria-live="polite">{(error || runtimeError) && <div className="error" role="alert">{error || runtimeError}</div>}{logs && <details open><summary>程序输出（最多 4000 字符）</summary><pre>{logs}</pre></details>}</div>
@@ -163,7 +166,7 @@ export default function App() {
           <div className="storage-status" data-testid="storage-status" data-save-state={saveState} aria-live="polite"><span className={saveState === 'error' ? 'save-error' : ''}>{saveState === 'saved' ? '' : saveState === 'pending' ? '◇ 正在保存…' : message}</span>{saveState === 'error' && <button onClick={retrySave}>重试保存</button>}</div>
         </section>
         {is3d ? <div className="voxel-previews">
-          <section className="voxel-panel game-panel"><header className="panel-heading"><div><h2>{isCreation ? '参考图' : '目标图'} · {voxelExamples[exampleIndex].title}</h2></div><span className="tag">17 × 17 × 17 · 两图联动</span></header><VoxelCanvas colors={reference} radius={voxelRadius} controls={voxelControls} label="三维参考图画布"/></section>
+          <section className="voxel-panel game-panel"><header className="panel-heading"><div><h2>{isCreation ? '参考图' : '目标图'} · {selectedVoxelLevel.title}</h2></div><span className="tag">17 × 17 × 17 · 两图联动</span></header><VoxelCanvas colors={reference} radius={voxelRadius} controls={voxelControls} label="三维参考图画布"/></section>
           <section className={`voxel-panel game-panel ${work?.score?.passed && !isHistorical ? 'is-cleared' : ''}`}><header className="panel-heading"><div><h2>我的作品</h2></div><span className="tag" data-testid="voxel-status">{status === 'running' ? '生成中…' : work ? `${work.colors.filter(Boolean).length} 个体素 · ${isHistorical ? '历史结果' : '已生成'}` : '等待运行'}</span></header><div className="voxel-result-wrap"><VoxelCanvas colors={work?.colors ?? []} radius={voxelRadius} controls={voxelControls} showControls={false}/>{work?.score && <div className={`voxel-score ${work.score.passed ? 'success' : ''}`} data-testid="voxel-score" aria-live="polite"><span>{isHistorical ? '历史匹配率' : '匹配率'}</span><strong>{work.score.percent.toFixed(1)}%</strong><span>{work.score.passed ? '通关！' : '尚未匹配'}</span><small>按完整模型判定</small></div>}</div>{isHistorical && <p className="voxel-history">当前显示上次成功运行的作品，请重新运行更新。</p>}</section>
         </div> : <div className="previews">
           <section className="board-panel game-panel target-panel"><header className="panel-heading"><div><span className="micro">TARGET / 0{levelNumber}</span><h2>目标图 · {level.title}</h2></div><span className="tag">{size} × {size}</span></header><div className="board-body board-body--solo"><PixelCanvas key={`target-${levelId}`} colors={target} radius={level.radius} label="目标图画布" view={view} setView={setView} axisMode={axisMode} origin={work?.origin ?? initialOrigin}/><button className="view-axis-button" aria-label="调整坐标系显示方式" aria-pressed={axisMode === 'center'} title={`坐标系：${axisMode === 'edge' ? '边缘轴' : '居中轴'}，点击切换`} onClick={() => setAxisMode(previous => previous === 'edge' ? 'center' : 'edge')}>坐标系</button><button className="view-reset-button" onClick={() => setView(initialView)}>重置视图</button></div></section>

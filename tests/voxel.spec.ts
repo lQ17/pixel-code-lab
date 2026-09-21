@@ -17,7 +17,7 @@ test('三维示例、视角、错误恢复、独立存档和模式取消', async
     await page.keyboard.press('ControlOrMeta+V')
   }
   await expect(run).toBeEnabled()
-  await page.getByRole('button', { name: /立方体/ }).click(); await page.getByRole('button', { name: '载入示例', exact: true }).click()
+  await page.getByRole('button', { name: /^立方体/ }).click(); await page.getByRole('button', { name: '载入示例', exact: true }).click()
   await run.click()
   await expect(canvas).toHaveAttribute('data-voxels', '343')
   await page.screenshot({ path: 'test-results/voxel-cube.png', fullPage: true })

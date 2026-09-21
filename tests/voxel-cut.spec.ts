@@ -4,7 +4,7 @@ test('轴拖动剖切、截面、组合裁切及恢复不改变源数据', async
   await page.goto('/')
   await page.getByRole('button',{name:'开始挑战',exact:true}).click()
   await page.getByRole('button',{name:'3D 体素',exact:true}).click()
-  await page.getByRole('button', { name: /立方体/ }).click(); await page.getByRole('button', { name: '载入示例', exact: true }).click()
+  await page.getByRole('button', { name: /^立方体/ }).click(); await page.getByRole('button', { name: '载入示例', exact: true }).click()
   await page.getByRole('button',{name:'运行',exact:true}).click()
   const canvas=page.getByLabel('三维体素画布'), viewport=page.locator('.voxel-viewport').last()
   await expect(canvas).toHaveAttribute('data-voxels','343')

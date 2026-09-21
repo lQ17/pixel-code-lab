@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { levels } from '../engine/levels'
-import { voxelTargetIds } from '../engine/voxel'
+import { defaultVoxelId, isVoxelLevelId, legacyVoxelExampleIds, voxelTargetIds, type VoxelLevelId } from '../engine/voxel'
 
 export const STORAGE_KEY = 'pixel-code-lab.progress'
 export interface Progress {
@@ -12,9 +12,10 @@ export interface Progress {
   mode?: '2d' | '3d'
   voxelCode?: string
   voxelExample?: number
+  voxelReferenceId?: VoxelLevelId
   voxelPassed?: Record<string, boolean>
   voxelActivity?: 'challenge' | 'create'
-  voxelLevelId?: string
+  voxelLevelId?: VoxelLevelId
   voxelCodes?: Record<string, string>
 }
 const empty = (): Progress => ({ schemaVersion: 1, codes: {}, passed: {}, levelId: levels[0].id, introSeen: false, voxelCodes: {} })
@@ -34,12 +35,14 @@ export function parseProgress(raw: string | null): Progress {
     if (typeof code === 'string') codes[level.id] = code
     if (typeof done === 'boolean') passed[level.id] = done
   }
-  if (data.voxelExample !== undefined && (!Number.isInteger(data.voxelExample) || Number(data.voxelExample) < 0 || Number(data.voxelExample) > 2)) throw new Error('无效三维参考图')
+  if (data.voxelExample !== undefined && (!Number.isInteger(data.voxelExample) || Number(data.voxelExample) < 0 || Number(data.voxelExample) >= legacyVoxelExampleIds.length)) throw new Error('无效三维参考图')
+  if (data.voxelReferenceId !== undefined && !isVoxelLevelId(data.voxelReferenceId)) throw new Error('无效三维参考图 ID')
+  const voxelReferenceId = (data.voxelReferenceId as VoxelLevelId | undefined) ?? legacyVoxelExampleIds[Number(data.voxelExample ?? 0)]
   if (data.mode !== undefined && data.mode !== '2d' && data.mode !== '3d') throw new Error('无效模式')
   if (data.voxelCode !== undefined && typeof data.voxelCode !== 'string') throw new Error('无效三维代码')
   if (data.voxelActivity !== undefined && data.voxelActivity !== 'challenge' && data.voxelActivity !== 'create') throw new Error('无效三维玩法')
-  if (data.voxelLevelId !== undefined && !voxelTargetIds.some(id => id === data.voxelLevelId)) throw new Error('无效三维关卡')
-  const voxelLevelId = (data.voxelLevelId as string | undefined) ?? voxelTargetIds[data.voxelCodes === undefined ? Number(data.voxelExample ?? 0) : 0]
+  if (data.voxelLevelId !== undefined && !isVoxelLevelId(data.voxelLevelId)) throw new Error('无效三维关卡')
+  const voxelLevelId = (data.voxelLevelId as VoxelLevelId | undefined) ?? (data.voxelCodes === undefined ? legacyVoxelExampleIds[Number(data.voxelExample ?? 0)] : defaultVoxelId)
   const voxelCodes: Record<string, string> = {}
   if (data.voxelCodes !== undefined) {
     if (!data.voxelCodes || typeof data.voxelCodes !== 'object' || Array.isArray(data.voxelCodes)) throw new Error('无效三维关卡代码')
@@ -61,7 +64,7 @@ export function parseProgress(raw: string | null): Progress {
       if (typeof done === 'boolean') voxelPassed[id] = done
     }
   }
-  return { schemaVersion: 1, codes, passed, voxelPassed, voxelCodes, voxelLevelId, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
+  return { schemaVersion: 1, codes, passed, voxelPassed, voxelCodes, voxelLevelId, voxelReferenceId, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
 }
 function load() {
   try {
