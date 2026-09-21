@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { levels } from '../engine/levels'
 import { defaultVoxelId, isVoxelLevelId, legacyVoxelExampleIds, voxelTargetIds, type VoxelLevelId } from '../engine/voxel'
+import { maxProjectName, parseProjectLibrary, type VoxelProject } from '../engine/projects'
 
 export const STORAGE_KEY = 'pixel-code-lab.progress'
 export interface Progress {
@@ -17,6 +18,9 @@ export interface Progress {
   voxelActivity?: 'challenge' | 'create'
   voxelLevelId?: VoxelLevelId
   voxelCodes?: Record<string, string>
+  voxelProjects?: VoxelProject[]
+  voxelProjectId?: string | null
+  voxelDraftName?: string
 }
 const empty = (): Progress => ({ schemaVersion: 1, codes: {}, passed: {}, levelId: levels[0].id, introSeen: false, voxelCodes: {} })
 export function parseProgress(raw: string | null): Progress {
@@ -64,7 +68,10 @@ export function parseProgress(raw: string | null): Progress {
       if (typeof done === 'boolean') voxelPassed[id] = done
     }
   }
-  return { schemaVersion: 1, codes, passed, voxelPassed, voxelCodes, voxelLevelId, voxelReferenceId, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
+  const voxelProjects = parseProjectLibrary(data.voxelProjects)
+  if (data.voxelProjectId !== undefined && data.voxelProjectId !== null && (typeof data.voxelProjectId !== 'string' || !voxelProjects.some(project => project.id === data.voxelProjectId))) throw new Error('无效的当前作品')
+  if (data.voxelDraftName !== undefined && (typeof data.voxelDraftName !== 'string' || data.voxelDraftName.length > maxProjectName)) throw new Error('无效的草稿名称')
+  return { schemaVersion: 1, codes, passed, voxelPassed, voxelCodes, voxelLevelId, voxelReferenceId, voxelProjects, voxelProjectId: data.voxelProjectId as Progress['voxelProjectId'], voxelDraftName: data.voxelDraftName as string | undefined, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
 }
 function load() {
   try {
@@ -72,7 +79,7 @@ function load() {
     try { return { progress: parseProgress(raw), blocked: false, message: '' } }
     catch { return { progress: empty(), blocked: true, message: '本地存档损坏或版本不兼容，原存档已保留。当前进度暂未保存。' } }
   } catch {
-    return { progress: empty(), blocked: false, message: '无法读取本地存储，当前进度可能无法保存。' }
+    return { progress: empty(), blocked: true, message: '保存失败：无法读取本地存储，原存档未覆盖。当前代码仍可编辑、运行或导出。' }
   }
 }
 export function useProgress() {
@@ -106,6 +113,27 @@ export function useProgress() {
     if (immediate) flush()
     else timer.current = setTimeout(flush, 300)
   }, [flush])
+  // Library changes and draft replacement become visible only after durable storage.
+  // The builder sees pending edits as well, including edits within the debounce window.
+  const commit = useCallback((build: (value: Progress) => Partial<Omit<Progress, 'schemaVersion'>> | null) => {
+    if (blocked.current) throw new Error('原存档未覆盖，请先通过「重试保存」恢复保存。当前代码可先导出备份。')
+    const patch = build(current.current)
+    if (patch === null) return false
+    const candidate = { ...current.current, ...patch }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(candidate))
+    } catch {
+      setSaveState('error')
+      setMessage('保存失败：浏览器存储不可用或空间不足。当前代码仍在页面中，请勿刷新。')
+      throw new Error('作品未保存，当前代码和作品库未被替换。请导出备份，恢复存储后重新操作。')
+    }
+    clearTimeout(timer.current)
+    current.current = candidate
+    dirty.current = false
+    setProgress(candidate)
+    setSaveState('saved'); setMessage('')
+    return true
+  }, [])
   useEffect(() => {
     const onVisibility = () => { if (document.visibilityState === 'hidden') flush() }
     window.addEventListener('pagehide', flush)
@@ -124,5 +152,5 @@ export function useProgress() {
     dirty.current = true
     flush()
   }
-  return { progress, update, saveState, message, retrySave }
+  return { progress, update, commit, saveState, message, retrySave }
 }

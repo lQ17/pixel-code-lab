@@ -42,3 +42,15 @@ h1{font-size:21px;letter-spacing:3px;line-height:1.5}.brand .micro{font-size:9px
 .voxel-rail nav{overflow-y:auto;min-height:0;gap:8px;padding:2px;align-content:start;scrollbar-width:thin}
 .voxel-rail .level-button{min-height:68px;flex-shrink:0}
 @media(max-width:950px){.voxel-rail nav{max-height:250px}.voxel-rail .level-button{display:flex}}
+
+.project-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 13px;border-bottom:1px solid #253746;flex-shrink:0;background:#10212c;font-size:10px;color:#9cb5c5}
+.project-toolbar>span{flex:1;min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-toolbar>div{display:flex;gap:8px}.project-toolbar button{font-size:11px;padding:5px 8px}.project-toolbar>p{flex-basis:100%;margin:0}
+.project-dialog{color:#dce9f4;background:#10202e;border:1px solid #4c8595;padding:24px;width:680px;max-width:calc(100% - 32px);max-height:calc(100dvh - 40px);overflow:auto;box-shadow:0 0 45px #040a12aa}
+.project-dialog::backdrop{background:#040a12cc;backdrop-filter:blur(3px)}
+.project-dialog header,.project-list-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.project-dialog h2{font-size:20px}.project-dialog h3{font-size:13px}.project-dialog header p{font-size:11px;margin-top:5px;color:#8eabba}
+.project-dialog button{font-size:12px;padding:7px 10px}.project-dialog form{margin:18px 0;padding:16px;border:1px solid #304f60;background:#0c1822}.project-dialog label{display:block;font-size:12px;margin-bottom:8px}
+.project-dialog input:not([type=file]){box-sizing:border-box;width:100%;background:#09151e;border:1px solid #4c7285;color:#dce9f4;font-family:inherit;font-size:14px;padding:9px 10px;margin-bottom:12px}.project-dialog input:focus-visible{outline:2px solid #6aefce;outline-offset:2px}
+.project-actions{display:flex;gap:8px;flex-wrap:wrap}.project-hint{font-size:11px;color:#8ba5b6;line-height:1.7;margin-top:12px}.project-error{color:#ffc5bb;font-size:12px;line-height:1.6}.project-notice{color:#6aefce;font-size:12px;line-height:1.6}
+.project-list-heading{margin-top:20px}.project-list{list-style:none;padding:0;margin:12px 0;max-height:300px;overflow:auto;scrollbar-width:thin}.project-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 2px;border-bottom:1px solid #2a4350}.project-description{min-width:0}.project-description strong{font-size:13px;overflow-wrap:anywhere}.project-description small{display:block;margin-top:6px;font-size:10px;color:#8ba5b6}.project-list .project-actions{flex-shrink:0}.project-empty{font-size:12px;color:#8ba5b6;padding:20px 0}
+@media(max-width:650px){.project-dialog{padding:16px}.project-list li{align-items:flex-start;flex-wrap:wrap}}

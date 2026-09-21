@@ -9,6 +9,8 @@ import { initialOrigin, type Origin, type RunnerStatus } from './runners/types'
 import { PixelCanvas } from './renderers/PixelCanvas'
 import { useProgress } from './hooks/useProgress'
 import { HelpDialog } from './components/HelpDialog'
+import { ProjectLibrary } from './components/ProjectLibrary'
+import { useVoxelLibrary } from './hooks/useVoxelLibrary'
 import { LevelGlyph, PixelMark } from './components/GameIcons'
 import { VoxelCanvas } from './renderers/VoxelCanvas'
 import { defaultVoxelId, getVoxelLevel, voxelRadius, voxelStarter, voxelReference, voxelTargetIds, type VoxelLevelId } from './engine/voxel'
@@ -19,7 +21,7 @@ type Work = { origin: Origin; colors: number[]; score: ReturnType<typeof evaluat
 const labels: Record<RunnerStatus, string> = { loading: '正在加载 Python…', recovering: '正在恢复 Python…', ready: 'Python 已就绪', running: '运行中…', failed: 'Python 加载失败' }
 
 export default function App() {
-  const { progress, update, saveState, message, retrySave } = useProgress()
+  const { progress, update, commit, saveState, message, retrySave } = useProgress()
   const { levelId, codes, passed } = progress
   const mode = progress.mode ?? '2d'
   const is3d = mode === '3d'
@@ -34,6 +36,8 @@ export default function App() {
   const voxelLevelNumber = voxelTargetIds.indexOf(referenceId) + 1
   const reference = useMemo(() => voxelReference(referenceId), [referenceId])
   const [showHelp, setShowHelp] = useState(!progress.introSeen)
+  const [showLibrary, setShowLibrary] = useState(false)
+  const [creationRevision, setCreationRevision] = useState(0)
   const [works, setWorks] = useState<Record<string, Work>>({})
   const [status, setStatus] = useState<RunnerStatus>('loading')
   const [runtimeError, setRuntimeError] = useState('')
@@ -46,6 +50,14 @@ export default function App() {
   const runner = useRef<PythonRunner | null>(null)
   const generation = useRef(0)
   const latestSource = useRef('')
+  const library = useVoxelLibrary(progress, commit, () => {
+    generation.current++
+    runner.current?.stop()
+    setCreationRevision(value => value + 1)
+    setWorks(previous => { const next = { ...previous }; delete next['voxel-creation']; return next })
+    setStale(previous => { const next = { ...previous }; delete next['voxel-creation']; return next })
+    setError(''); setLogs(''); setErrorLocation(undefined)
+  })
   useEffect(() => {
     const tickets = generation
     const instance = new PythonRunner((next, detail) => { setStatus(next); setRuntimeError(detail ?? '') })
@@ -159,7 +171,8 @@ export default function App() {
       <div className="workspace">
         <section className="editor-panel game-panel"><header className="panel-heading"><div><span className="micro">CODE TERMINAL</span><h2>代码工作台</h2></div><span className="tag">PYTHON</span></header>
           <div className="file-tab"><span><i/> {is3d ? isCreation ? 'creation_3d.py' : `voxel_0${voxelLevelNumber}.py` : `challenge_0${levelNumber}.py`}</span><div className="code-tools">{is3d && selectedVoxelLevel.exampleCode !== undefined && <button className="text-button" onClick={loadExample}>载入示例</button>}<button className="text-button" onClick={restoreTemplate} disabled={code === template}>恢复初始代码</button></div></div>
-          <Suspense fallback={<div className="editor-loading"><PixelMark/><span>正在加载代码编辑器…</span></div>}><CodeEditor key={activeId} value={code} onChange={changeCode} error={errorLocation}/></Suspense>
+          {isCreation && <div className="project-toolbar"><span title={library.name || '未命名草稿'}>{library.name || '未命名草稿'}{library.modified ? ' · 待保存到作品库' : library.active ? ' · 已保存' : ''}</span><div><button onClick={() => library.name.trim() ? library.save() : setShowLibrary(true)}>保存作品</button><button onClick={() => setShowLibrary(true)}>作品库</button></div>{!showLibrary && (library.error || library.notice) && <p role={library.error ? 'alert' : 'status'} className={library.error ? 'project-error' : 'project-notice'}>{library.error || library.notice}</p>}</div>}
+          <Suspense fallback={<div className="editor-loading"><PixelMark/><span>正在加载代码编辑器…</span></div>}><CodeEditor key={isCreation ? `${activeId}-${creationRevision}` : activeId} value={code} onChange={changeCode} error={errorLocation}/></Suspense>
           <div className="execution-dock"><div className="actions"><button className="run-button" onClick={() => void run()} disabled={status !== 'ready'} aria-label="运行"><span aria-hidden="true">▶</span> 运行代码 <span className="micro">RUN</span></button><button className="stop-button" aria-label="停止" onClick={() => runner.current?.stop()} disabled={status !== 'running'}><span aria-hidden="true">■</span> 停止</button>{status === 'failed' && <button onClick={() => runner.current?.retry()}>重试加载</button>}</div><p className={`runtime-state ${status}`} role="status"><i/>{labels[status]}</p></div>
           <div className="console-output" aria-live="polite">{(error || runtimeError) && <div className="error" role="alert">{error || runtimeError}</div>}{logs && <details open><summary>程序输出（最多 4000 字符）</summary><pre>{logs}</pre></details>}</div>
           <div className="palette-dock"><div className="dock-label"><h2>调色模块</h2><span className="micro">RETURN 0—8</span></div><div className="palette">{palette.map((color, index) => <span key={index} title={`${index} · ${colorNames[index]}`}><i style={{ background: index === 0 ? 'transparent' : color }} className={index === 0 ? 'empty-color' : ''}/><b>{index}</b><em>{colorNames[index]}</em></span>)}</div></div>
@@ -175,6 +188,7 @@ export default function App() {
       </div>
     </div>
     <footer className="game-footer"/>
+    {isCreation && showLibrary && <ProjectLibrary library={library} onName={voxelDraftName => update({ voxelDraftName })} onClose={() => setShowLibrary(false)}/>}
     {showHelp && <HelpDialog onClose={() => { setShowHelp(false); update({ introSeen: true }, true) }}/>}
   </main>
 }
