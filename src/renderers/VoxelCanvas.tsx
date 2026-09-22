@@ -148,7 +148,11 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
           candidates.push({ base, distance: Math.abs(signed), nx:-dy*sign, ny:dx*sign })
         }
         // X/Z stay on the bottom of the world; Y uses the right silhouette edge.
-        candidates.sort((a,b) => Math.abs(b.distance-a.distance) > .01 ? b.distance-a.distance : (axis === 1 ? b.nx-a.nx : b.ny-a.ny))
+        candidates.sort((a,b) => {
+          if (Math.abs(b.distance-a.distance) > .01) return b.distance-a.distance
+          if (view.topDown && axis === 2) return a.nx - b.nx
+          return axis === 1 ? b.nx-a.nx : b.ny-a.ny
+        })
         const { base, nx, ny } = candidates[0]
         const at = (value: number) => { const p: Point = [...base]; p[axis] = value; const [x,y] = project(p); return [x+nx*7,y+ny*7] }
         const [ax,ay] = at(-radius-.5), [bx,by] = at(radius+.95)
@@ -181,10 +185,10 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
   return <div className="voxel-viewport" data-cuts={cuts.join(',')} data-visible-voxels={shown}>
     <canvas ref={canvas} aria-label={label} tabIndex={0} data-view={`${view.yaw},${view.pitch},${view.zoom}`} data-voxels={colors.filter(Boolean).length}
       onPointerDown={e => { setPointer(null); drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId }; e.currentTarget.setPointerCapture(e.pointerId) }}
-      onPointerMove={e => { const last = drag.current; if (!last) { const box=e.currentTarget.getBoundingClientRect(); setPointer({ x:e.clientX-box.left,y:e.clientY-box.top,view,cuts,colors,size }); return } if (last.id !== e.pointerId) return; const dx = e.clientX-last.x, dy = e.clientY-last.y; drag.current = { x:e.clientX,y:e.clientY,id:e.pointerId }; setView(v => ({ ...v,yaw:v.yaw+dx*.008,pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,v.pitch+dy*.008)) })) }}
+      onPointerMove={e => { const last = drag.current; if (!last) { const box=e.currentTarget.getBoundingClientRect(); setPointer({ x:e.clientX-box.left,y:e.clientY-box.top,view,cuts,colors,size }); return } if (last.id !== e.pointerId) return; const dx = e.clientX-last.x, dy = e.clientY-last.y; drag.current = { x:e.clientX,y:e.clientY,id:e.pointerId }; setView(v => ({ ...v,topDown:false,yaw:v.yaw+dx*.008,pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,v.pitch+dy*.008)) })) }}
       onPointerLeave={() => setPointer(null)}
       onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }} onLostPointerCapture={() => { drag.current = null }}
-      onKeyDown={e => { if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-'].includes(e.key)) return; e.preventDefault(); setView(v => ({ yaw:v.yaw+(e.key==='ArrowLeft'?-.1:e.key==='ArrowRight'?.1:0),pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,v.pitch+(e.key==='ArrowUp'?.1:e.key==='ArrowDown'?-.1:0))),zoom:Math.max(.4,Math.min(4,v.zoom*(e.key==='+'?1.1:e.key==='-'?1/1.1:1))) })) }}/>
+      onKeyDown={e => { if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-'].includes(e.key)) return; e.preventDefault(); setView(v => ({ ...v,topDown:['+','-'].includes(e.key)?v.topDown:false,yaw:v.yaw+(e.key==='ArrowLeft'?-.1:e.key==='ArrowRight'?.1:0),pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,v.pitch+(e.key==='ArrowUp'?.1:e.key==='ArrowDown'?-.1:0))),zoom:Math.max(.4,Math.min(4,v.zoom*(e.key==='+'?1.1:e.key==='-'?1/1.1:1))) })) }}/>
     {hover && pointer && <p className="coordinate voxel-coordinate" role="tooltip" style={{left:Math.max(4,Math.min(pointer.x+12,size.width-280)),top:Math.max(4,pointer.y-34)}}><span>坐标:(</span><span className="coordinate-x">x: {hover.voxel[0]}</span><span>, </span><span className="coordinate-y">y: {hover.voxel[1]}</span><span>, </span><span className="coordinate-z">z: {hover.voxel[2]}</span><span>), </span><span className="coordinate-color">颜色: <i className="coordinate-swatch" style={{backgroundColor:palette[hover.color]}}/>{colorNames[hover.color]}</span></p>}
     {axes && showCutHandles && vectors.map(([vx,vy], axis) => {
       if (Math.hypot(vx,vy) < .08) return null

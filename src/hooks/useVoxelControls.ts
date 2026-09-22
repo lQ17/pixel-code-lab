@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 type Point = [number,number,number]
-const initial = { yaw: -.65, pitch: .45, zoom: 1 }
+const initial: { yaw: number; pitch: number; zoom: number; topDown?: boolean } = { yaw: -.65, pitch: .45, zoom: 1 }
 export interface VoxelControls {
   view: typeof initial; setView: Dispatch<SetStateAction<typeof initial>>
   axes: boolean; setAxes: Dispatch<SetStateAction<boolean>>
