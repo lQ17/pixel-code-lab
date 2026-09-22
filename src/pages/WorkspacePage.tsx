@@ -176,7 +176,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
   const blankColors = useMemo(() => targetColorsArray.map(() => 0), [targetColorsArray])
 
   // 三维参考数据
-  const voxelRefId = isCreation ? (progress.voxelReferenceId ?? 'voxel-cube') : voxelLevelId
+  const voxelRefId = isCreation ? ((isBlocks ? progress.voxelBlocks?.referenceId : progress.voxelReferenceId) ?? 'voxel-cube') : voxelLevelId
   const voxelReferenceColors = useMemo(() => {
     return voxelReference(voxelRefId)
   }, [voxelRefId])
@@ -282,6 +282,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
             >
               {isBlocks ? (
                 <BlocksEditor
+                  mode={mode}
                   ref={blocksEditorRef}
                   key={`${activeId}-${creationRevision}`}
                   document={blocksDocument}

@@ -1,5 +1,6 @@
-import { compileBlocks, emptyBlocks, type BlocksDocument, type EditorKind } from './blocks/model'
+import { compileBlocks, emptyBlocksFor, type BlocksDocument, type EditorKind } from './blocks/model'
 import { blocksExample } from './blocks/examples'
+import { voxelBlocksExample } from './blocks/voxelExamples'
 import { defaultPixelId, pixelRadius, pixelReferences, pixelReference, type PixelReferenceId } from './engine/pixelCreation'
 import { downloadPng } from './renderers/projectImage'
 import { useVoxelControls } from './hooks/useVoxelControls'
@@ -57,26 +58,32 @@ export default function App() {
       ? route.levelId
       : (progress.levelId ?? 'square')
 
-  const editor = (isCreation ? progress.pixelEditor : progress.pixelChallengeEditors?.[levelId]) ?? 'python'
-  const isBlocks = !is3d && editor === 'blocks'
-  const blocksDocument = (isCreation ? progress.pixelBlocks?.document : progress.pixelChallengeBlocks?.[levelId]) ?? emptyBlocks
+  const editor = (is3d
+    ? isCreation ? progress.voxelEditor : progress.voxelChallengeEditors?.[voxelLevelId]
+    : isCreation ? progress.pixelEditor : progress.pixelChallengeEditors?.[levelId]) ?? 'python'
+  const isBlocks = editor === 'blocks'
+  const blocksDocument = (is3d
+    ? isCreation ? progress.voxelBlocks?.document : progress.voxelChallengeBlocks?.[voxelLevelId]
+    : isCreation ? progress.pixelBlocks?.document : progress.pixelChallengeBlocks?.[levelId]) ?? emptyBlocksFor(activeMode)
   const compilation = useMemo(() => compileBlocks(blocksDocument), [blocksDocument])
   const pixelReferenceId = (isBlocks && isCreation ? progress.pixelBlocks?.referenceId : progress.pixelReferenceId) ?? defaultPixelId
   const selectedPixelReference = pixelReferences[pixelReferenceId]
 
   const activeId = isCreation
     ? is3d
-      ? 'voxel-creation'
+      ? isBlocks ? 'voxel-blocks' : 'voxel-creation'
       : isBlocks
         ? 'pixel-blocks'
         : 'pixel-creation'
     : is3d
-      ? voxelLevelId
+      ? isBlocks ? `challenge-blocks-${voxelLevelId}` : voxelLevelId
       : isBlocks ? `challenge-blocks-${levelId}` : levelId
 
   const template = is3d ? voxelStarter : starterCode
   const voxelControls = useVoxelControls(voxelRadius)
-  const referenceId = is3d && isCreation ? (progress.voxelReferenceId ?? defaultVoxelId) : voxelLevelId
+  const referenceId = is3d && isCreation
+    ? ((isBlocks ? progress.voxelBlocks?.referenceId : progress.voxelReferenceId) ?? defaultVoxelId)
+    : voxelLevelId
   const selectedVoxelLevel = getVoxelLevel(referenceId)
   const reference = useMemo(() => voxelReference(referenceId), [referenceId])
 
@@ -111,12 +118,12 @@ export default function App() {
       setCreationRevision(value => value + 1)
       setWorks(previous => {
         const next = { ...previous }
-        for (const key of activeMode === '2d' ? ['pixel-creation', 'pixel-blocks'] : ['voxel-creation']) delete next[key]
+        for (const key of activeMode === '2d' ? ['pixel-creation', 'pixel-blocks'] : ['voxel-creation', 'voxel-blocks']) delete next[key]
         return next
       })
       setStale(previous => {
         const next = { ...previous }
-        for (const key of activeMode === '2d' ? ['pixel-creation', 'pixel-blocks'] : ['voxel-creation']) delete next[key]
+        for (const key of activeMode === '2d' ? ['pixel-creation', 'pixel-blocks'] : ['voxel-creation', 'voxel-blocks']) delete next[key]
         return next
       })
       setError('')
@@ -150,10 +157,10 @@ export default function App() {
     function onHashChange() {
       // 积木错误拦截
       const currentRoute = routeRef.current
-      if (currentRoute.kind === 'work' && currentRoute.mode === '2d') {
-        const currentEditor = currentRoute.activity === 'create'
-          ? progressRef.current.pixelEditor
-          : progressRef.current.pixelChallengeEditors?.[currentRoute.levelId]
+      if (currentRoute.kind === 'work') {
+        const currentEditor = currentRoute.mode === '3d'
+          ? currentRoute.activity === 'create' ? progressRef.current.voxelEditor : progressRef.current.voxelChallengeEditors?.[currentRoute.levelId]
+          : currentRoute.activity === 'create' ? progressRef.current.pixelEditor : progressRef.current.pixelChallengeEditors?.[currentRoute.levelId]
         if (currentEditor === 'blocks' && blocksErrorRef.current) {
           window.location.hash = routeToHash(routeRef.current)
           setError('请先撤销或修正超出限制的积木，再离开或切换。')
@@ -266,7 +273,7 @@ export default function App() {
       if (score?.passed) {
         update(
           is3d
-            ? { voxelPassed: { ...progress.voxelPassed, [selected]: true } }
+            ? { voxelPassed: { ...progress.voxelPassed, [voxelLevelId]: true } }
             : { passed: { ...progress.passed, [levelId]: true } },
           true
         )
@@ -311,8 +318,10 @@ export default function App() {
 
   function blocksPatch(doc: BlocksDocument) {
     return isCreation
-      ? patchCreationDraft(progress, '2d', 'blocks', { document: doc })
-      : { pixelChallengeBlocks: { ...progress.pixelChallengeBlocks, [levelId]: doc } }
+      ? patchCreationDraft(progress, activeMode, 'blocks', { document: doc })
+      : is3d
+        ? { voxelChallengeBlocks: { ...progress.voxelChallengeBlocks, [voxelLevelId]: doc } }
+        : { pixelChallengeBlocks: { ...progress.pixelChallengeBlocks, [levelId]: doc } }
   }
 
   function replaceBlocks(doc: BlocksDocument) {
@@ -334,9 +343,9 @@ export default function App() {
     if (editor === nextEditor) return
     generation.current++
     runner.current?.stop()
-    update(isCreation
-      ? { pixelEditor: nextEditor }
-      : { pixelChallengeEditors: { ...progress.pixelChallengeEditors, [levelId]: nextEditor } }, true)
+    update(is3d
+      ? isCreation ? { voxelEditor: nextEditor } : { voxelChallengeEditors: { ...progress.voxelChallengeEditors, [voxelLevelId]: nextEditor } }
+      : isCreation ? { pixelEditor: nextEditor } : { pixelChallengeEditors: { ...progress.pixelChallengeEditors, [levelId]: nextEditor } }, true)
     library.clearFeedback()
     setBlocksError('')
     setError('')
@@ -347,7 +356,7 @@ export default function App() {
   function restoreTemplate() {
     if (isBlocks) {
       if (!window.confirm('恢复初始积木？当前积木将被替换。')) return
-      replaceBlocks(emptyBlocks)
+      replaceBlocks(emptyBlocksFor(activeMode))
       return
     }
     if (code === template || !window.confirm('恢复初始代码？当前代码将被替换，历史通关记录会保留。')) return
@@ -364,7 +373,7 @@ export default function App() {
     generation.current++
     runner.current?.stop()
     if (isCreation) {
-      update({ voxelReferenceId: id }, true)
+      update(isBlocks ? patchCreationDraft(progress, activeMode, 'blocks', { referenceId: id }) : { voxelReferenceId: id }, true)
     } else {
       navigateTo({ kind: 'work', mode: '3d', activity: 'challenge', levelId: id })
     }
@@ -392,7 +401,7 @@ export default function App() {
     if (!is3d && !isCreation) return
     if (isBlocks) {
       if (!window.confirm('载入积木示例将替换当前积木，是否继续？')) return
-      replaceBlocks(blocksExample(pixelReferenceId))
+      replaceBlocks(is3d ? voxelBlocksExample(referenceId) : blocksExample(pixelReferenceId))
       return
     }
     const source = is3d ? selectedVoxelLevel.exampleCode : selectedPixelReference.exampleCode

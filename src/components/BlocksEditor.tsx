@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Blockly, theme, toolbox } from '../blocks/blockly'
+import { Blockly, theme, toolboxFor } from '../blocks/blockly'
+import type { SpaceMode } from '../runners/types'
 import { compileBlocks, maxBlocks, parseBlocks, type BlocksDocument } from '../blocks/model'
 
 function fitWorkspace(ws: Blockly.WorkspaceSvg) {
@@ -11,7 +12,7 @@ export interface BlocksEditorHandle {
   zoomToFit: () => void
 }
 
-export const BlocksEditor = forwardRef<BlocksEditorHandle, { document: BlocksDocument; onChange: (document: BlocksDocument) => void; errorBlock?: string; onError: (message: string) => void }>(function BlocksEditor({ document, onChange, onError, errorBlock }, ref) {
+export const BlocksEditor = forwardRef<BlocksEditorHandle, { mode: SpaceMode; document: BlocksDocument; onChange: (document: BlocksDocument) => void; errorBlock?: string; onError: (message: string) => void }>(function BlocksEditor({ mode, document, onChange, onError, errorBlock }, ref) {
   const container = useRef<HTMLDivElement>(null)
   const workspace = useRef<Blockly.WorkspaceSvg | null>(null)
   useImperativeHandle(ref, () => ({
@@ -22,17 +23,17 @@ export const BlocksEditor = forwardRef<BlocksEditorHandle, { document: BlocksDoc
   useEffect(() => { latest.current = { document, onChange, onError } }, [document, onChange, onError])
   useEffect(() => {
     const node = container.current!
-    const ws = Blockly.inject(node, { toolbox, theme, renderer: 'geras', sounds: false, trashcan: false, maxBlocks,
+    const ws = Blockly.inject(node, { toolbox: toolboxFor(mode), theme, renderer: 'geras', sounds: false, trashcan: false, maxBlocks,
       zoom: { controls: true, wheel: true, startScale: .75, maxScale: 1.5, minScale: .3, scaleSpeed: 1.15 },
       move: { scrollbars: true, drag: true, wheel: true }, grid: { spacing: 20, length: 2, colour: '#253746', snap: false } })
     workspace.current = ws
     let loaded = false
-    try { Blockly.serialization.workspaces.load(parseBlocks(latest.current.document).workspace, ws); loaded = true }
+    try { Blockly.serialization.workspaces.load(parseBlocks(latest.current.document, mode).workspace, ws); loaded = true }
     catch { const message = '积木工作区无法恢复，原草稿已保留。请导出备份后检查文件。'; queueMicrotask(() => { setLoadError(message); latest.current.onError(message) }) }
     function publish(event: Blockly.Events.Abstract) {
       if (!loaded || event.isUiEvent || ws.isDragging()) return
       try {
-        const next = parseBlocks({ version: 1, workspace: Blockly.serialization.workspaces.save(ws) })
+        const next = parseBlocks({ ...(mode === '3d' ? { version: 2, mode: '3d' } : { version: 1 }), workspace: Blockly.serialization.workspaces.save(ws) }, mode)
         setLoadError(''); latest.current.onError('')
         if (JSON.stringify(next) !== JSON.stringify(latest.current.document)) latest.current.onChange(next)
       } catch (error) { const message = error instanceof Error ? error.message : String(error); setLoadError(message); latest.current.onError(message) }
@@ -48,7 +49,7 @@ export const BlocksEditor = forwardRef<BlocksEditorHandle, { document: BlocksDoc
     const onResize = () => { Blockly.svgResize(ws); fitWorkspace(ws) }
     window.addEventListener('resize', onResize)
     return () => { disposed = true; window.removeEventListener('resize', onResize); cancelAnimationFrame(fit); resize.disconnect(); ws.removeChangeListener(publish); ws.dispose(); workspace.current = null }
-  }, [])
+  }, [mode])
   useEffect(() => {
     const ws = workspace.current
     if (!ws) return

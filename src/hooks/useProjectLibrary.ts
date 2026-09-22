@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { compileBlocks, emptyBlocks, type BlocksDocument, type EditorKind } from '../blocks/model'
+import { compileBlocks, emptyBlocksFor, type BlocksDocument, type EditorKind } from '../blocks/model'
 import { starterCode } from '../engine/levels'
 import { defaultPixelId, type PixelReferenceId } from '../engine/pixelCreation'
 import { defaultVoxelId, voxelStarter, type VoxelLevelId } from '../engine/voxel'
@@ -9,10 +9,11 @@ import type { Progress, useProgress } from './useProgress'
 
 export function creationDraft(progress: Progress, mode: SpaceMode = '3d', selectedEditor?: EditorKind) {
   const pixel = mode === '2d'
-  const editor = pixel ? selectedEditor ?? progress.pixelEditor ?? 'python' : 'python'
+  const editor = selectedEditor ?? (pixel ? progress.pixelEditor : progress.voxelEditor) ?? 'python'
   const blocks = editor === 'blocks'
   const projects = (pixel ? progress.pixelProjects : progress.voxelProjects) ?? []
-  const blockDraft = progress.pixelBlocks
+  const blockDraft = pixel ? progress.pixelBlocks : progress.voxelBlocks
+  const emptyBlocks = emptyBlocksFor(mode)
   const id = blocks ? blockDraft?.projectId : pixel ? progress.pixelProjectId : progress.voxelProjectId
   const active = projects.find(project => project.id === id)
   const document = blocks ? blockDraft?.document ?? emptyBlocks : undefined
@@ -35,6 +36,12 @@ function snapshot(progress: Progress, mode: SpaceMode, preview: Preview, name: s
 
 type DraftPatch = { projectId?: string | null; name?: string; code?: string; referenceId?: string; document?: BlocksDocument }
 export function patchCreationDraft(current: Progress, mode: SpaceMode, editor: EditorKind, value: DraftPatch): Partial<Progress> {
+  if (mode === '3d' && editor === 'blocks') return { voxelBlocks: {
+    document: value.document ?? current.voxelBlocks?.document ?? emptyBlocksFor(mode),
+    projectId: value.projectId !== undefined ? value.projectId : current.voxelBlocks?.projectId ?? null,
+    name: value.name ?? current.voxelBlocks?.name ?? '',
+    referenceId: (value.referenceId ?? current.voxelBlocks?.referenceId ?? defaultVoxelId) as VoxelLevelId,
+  } }
   if (mode === '3d') return {
     ...(value.projectId !== undefined ? { voxelProjectId: value.projectId } : {}),
     ...(value.name !== undefined ? { voxelDraftName: value.name } : {}),
@@ -42,7 +49,7 @@ export function patchCreationDraft(current: Progress, mode: SpaceMode, editor: E
     ...(value.referenceId !== undefined ? { voxelReferenceId: value.referenceId as VoxelLevelId } : {}),
   }
   if (editor === 'blocks') return { pixelBlocks: {
-    document: value.document ?? current.pixelBlocks?.document ?? emptyBlocks,
+    document: value.document ?? current.pixelBlocks?.document ?? emptyBlocksFor(mode),
     projectId: value.projectId !== undefined ? value.projectId : current.pixelBlocks?.projectId ?? null,
     name: value.name ?? current.pixelBlocks?.name ?? '',
     referenceId: (value.referenceId ?? current.pixelBlocks?.referenceId ?? defaultPixelId) as PixelReferenceId,
@@ -95,8 +102,8 @@ export function useProjectLibrary(progress: Progress, commit: ReturnType<typeof 
           }
         }
         return {
-          ...projectPatch(projects), ...(mode === '2d' ? { pixelEditor: editor } : {}),
-          ...patchCreationDraft(current, mode, editor, { projectId: selected?.id ?? null, code: selected?.code ?? (mode === '2d' ? starterCode : voxelStarter), document: selected?.blocks ?? emptyBlocks, name: selected?.name ?? '', referenceId: selected?.referenceId ?? (mode === '2d' ? defaultPixelId : defaultVoxelId) }),
+          ...projectPatch(projects), ...(mode === '2d' ? { pixelEditor: editor } : { voxelEditor: editor }),
+          ...patchCreationDraft(current, mode, editor, { projectId: selected?.id ?? null, code: selected?.code ?? (mode === '2d' ? starterCode : voxelStarter), document: selected?.blocks ?? emptyBlocksFor(mode), name: selected?.name ?? '', referenceId: selected?.referenceId ?? (mode === '2d' ? defaultPixelId : defaultVoxelId) }),
         }
       })
       if (changed) { onSwitch(); setNotice(id === null ? '已新建草稿。' : '作品已打开，运行代码即可生成画面。') }

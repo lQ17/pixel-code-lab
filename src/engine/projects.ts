@@ -36,8 +36,8 @@ export function parseProject(value: unknown, mode: SpaceMode = '3d'): Project {
   if (typeof data.code !== 'string' || data.code.length > maxProjectCode) throw new Error('作品代码必须是文本，且不超过 200000 个字符。')
   if (!(mode === '3d' ? isVoxelLevelId(data.referenceId) : isPixelReferenceId(data.referenceId))) throw new Error('作品参考模型无效。')
   if (data.editor !== undefined && data.editor !== 'blocks') throw new Error('不支持此作品编辑方式。')
-  if ((data.editor === 'blocks' && (mode !== '2d' || data.blocks === undefined)) || (data.editor === undefined && data.blocks !== undefined)) throw new Error('积木作品信息不完整。')
-  const blocks = data.editor === 'blocks' ? parseBlocks(data.blocks) : undefined
+  if ((data.editor === 'blocks' && data.blocks === undefined) || (data.editor === undefined && data.blocks !== undefined)) throw new Error('积木作品信息不完整。')
+  const blocks = data.editor === 'blocks' ? parseBlocks(data.blocks, mode) : undefined
   const compiled = blocks ? compileBlocks(blocks) : undefined
   const code = compiled ? compiled.code : data.code
   const validPreview = !compiled || (!!code && code === data.code)
@@ -78,7 +78,7 @@ export function importProject(raw: string, id: string, mode: SpaceMode = '3d'): 
   if (new TextEncoder().encode(raw).byteLength > maxProjectFileBytes) throw new Error('作品文件不能超过 1 MB。')
   let data: Record<string, unknown>
   try { data = object(JSON.parse(raw)) } catch { throw new Error('无法读取作品文件，请选择导出的 JSON 作品文件。') }
-  if (data.format !== (mode === '3d' ? 'pixel-code-lab.voxel-project' : 'pixel-code-lab.pixel-project') || (data.version !== 1 && !(mode === '2d' && data.version === 2)) || data.mode !== mode || data.language !== 'python' || data.radius !== (mode === '3d' ? voxelRadius : pixelRadius)) throw new Error('不支持此作品格式、版本、语言或空间尺寸。')
+  if (data.format !== (mode === '3d' ? 'pixel-code-lab.voxel-project' : 'pixel-code-lab.pixel-project') || (data.version !== 1 && data.version !== 2) || data.mode !== mode || data.language !== 'python' || data.radius !== (mode === '3d' ? voxelRadius : pixelRadius)) throw new Error('不支持此作品格式、版本、语言或空间尺寸。')
   const content = object(data.project)
   if ((data.version === 2 && content.editor !== 'blocks') || (data.version === 1 && (content.editor !== undefined || content.blocks !== undefined))) throw new Error('作品版本与编辑方式不一致。')
   return parseProject({ ...content, id }, mode)

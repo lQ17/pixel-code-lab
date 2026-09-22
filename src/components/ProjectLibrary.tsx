@@ -21,7 +21,7 @@ export function ProjectLibrary({ library, onName, onClose }: { library: Library;
   }, [])
   const projects = [...library.projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   return <dialog ref={dialog} className="project-dialog" aria-labelledby="project-library-title" onCancel={event => { event.preventDefault(); onClose() }}>
-    <header><div><h2 id="project-library-title">本地作品库</h2><p>{library.mode === '2d' ? '二维' : '三维'} Python 作品 · {projects.length} 件</p></div><button onClick={onClose} aria-label="关闭作品库">关闭</button></header>
+    <header><div><h2 id="project-library-title">本地作品库</h2><p>{library.mode === '2d' ? '二维' : '三维'} Python / 积木作品 · {projects.length} 件</p></div><button onClick={onClose} aria-label="关闭作品库">关闭</button></header>
     <form onSubmit={event => { event.preventDefault(); library.save() }}>
       <label htmlFor="project-name">当前作品名称</label>
       <input id="project-name" value={library.name} onChange={event => onName(event.target.value)} maxLength={maxProjectName} placeholder="为作品起个名字" autoFocus />

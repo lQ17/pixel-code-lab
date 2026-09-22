@@ -1,13 +1,17 @@
 // A bounded subset of Blockly JSON. No Blockly runtime is needed to validate or compile saves.
+import type { SpaceMode } from '../runners/types'
 export type EditorKind = 'python' | 'blocks'
 export type BlockNode = { type: string; id: string; x?: number; y?: number; fields?: Record<string, string | number>; inputs?: Record<string, { block?: BlockNode; shadow?: BlockNode }>; next?: { block: BlockNode } }
-export type BlocksDocument = { version: 1; workspace: { blocks: { languageVersion: 0; blocks: BlockNode[] } } }
+type BlocksWorkspace = { blocks: { languageVersion: 0; blocks: BlockNode[] } }
+export type BlocksDocument = { version: 1; workspace: BlocksWorkspace } | { version: 2; mode: '3d'; workspace: BlocksWorkspace }
 export const maxBlocks = 250
 export const maxBlocksBytes = 250_000
 
 type Definition = { kind: 'root' | 'statement' | 'Number' | 'Boolean'; fields?: Record<string, readonly string[] | 'integer'>; inputs?: Record<string, 'statement' | 'Number' | 'Boolean'> }
 export const definitions: Record<string, Definition> = {
   pixel_entry: { kind: 'root', inputs: { BODY: 'statement' } },
+  voxel_entry: { kind: 'root', inputs: { BODY: 'statement' } },
+  voxel_coord: { kind: 'Number', fields: { AXIS: ['x', 'y', 'z'] } },
   pixel_return: { kind: 'statement', inputs: { COLOR: 'Number' } },
   pixel_if: { kind: 'statement', inputs: { CONDITION: 'Boolean', THEN: 'statement' } },
   pixel_if_else: { kind: 'statement', inputs: { CONDITION: 'Boolean', THEN: 'statement', ELSE: 'statement' } },
@@ -27,10 +31,12 @@ function object(value: unknown): Record<string, unknown> {
 function keys(data: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(data).some(key => !allowed.includes(key))) throw new Error('积木包含不支持的字段。')
 }
-export function parseBlocks(value: unknown): BlocksDocument {
+export function parseBlocks(value: unknown, mode: SpaceMode = '2d'): BlocksDocument {
   if (new TextEncoder().encode(JSON.stringify(value)).length > maxBlocksBytes) throw new Error('积木数据不能超过 250 KB。')
-  const doc = object(value); keys(doc, ['version', 'workspace'])
-  if (doc.version !== 1) throw new Error('不支持此积木版本。')
+  const doc = object(value)
+  const is3d = mode === '3d'
+  if (is3d ? doc.version !== 2 || doc.mode !== '3d' : doc.version !== 1) throw new Error('不支持此积木版本或维度。')
+  keys(doc, is3d ? ['version', 'mode', 'workspace'] : ['version', 'workspace'])
   const workspace = object(doc.workspace); keys(workspace, ['blocks'])
   const blocks = object(workspace.blocks); keys(blocks, ['languageVersion', 'blocks'])
   if (blocks.languageVersion !== 0 || !Array.isArray(blocks.blocks)) throw new Error('积木工作区无效。')
@@ -41,10 +47,11 @@ export function parseBlocks(value: unknown): BlocksDocument {
     const raw = object(value)
     keys(raw, ['type', 'id', 'x', 'y', 'fields', 'inputs', 'next', 'deletable', 'movable', 'editable', 'collapsed', 'enabled', 'disabledReasons', 'inline'])
     if (typeof raw.type !== 'string' || !Object.hasOwn(definitions, raw.type)) throw new Error('包含不支持的积木类型。')
+    if ((is3d ? ['pixel_entry', 'pixel_coord'] : ['voxel_entry', 'voxel_coord']).includes(raw.type)) throw new Error('积木类型与当前维度不符。')
     const def = definitions[raw.type]
     if (expected && def.kind !== expected) throw new Error('积木连接类型不匹配。')
     if (shadow && !['pixel_integer', 'pixel_color'].includes(raw.type)) throw new Error('不支持此默认输入积木。')
-    if (def.kind === 'root') { if (depth !== 0 || ++roots > 1) throw new Error('只能保留一个像素入口。') }
+    if (def.kind === 'root') { if (depth !== 0 || ++roots > 1) throw new Error('只能保留一个颜色入口。') }
     if (typeof raw.id !== 'string' || !raw.id || raw.id.length > 128 || ids.has(raw.id)) throw new Error('积木标识无效或重复。')
     ids.add(raw.id)
     if (raw.enabled === false || (raw.disabledReasons !== undefined && (!Array.isArray(raw.disabledReasons) || raw.disabledReasons.length))) throw new Error('原型不支持禁用积木。')
@@ -85,10 +92,12 @@ export function parseBlocks(value: unknown): BlocksDocument {
     return node
   }
   const nodes = blocks.blocks.map(node => parse(node, 0))
-  if (roots !== 1) throw new Error('缺少像素入口，原工作区已保留。')
-  return { version: 1, workspace: { blocks: { languageVersion: 0, blocks: nodes } } }
+  if (roots !== 1) throw new Error('缺少颜色入口，原工作区已保留。')
+  return { ...(is3d ? { version: 2 as const, mode: '3d' as const } : { version: 1 as const }), workspace: { blocks: { languageVersion: 0, blocks: nodes } } }
 }
 export const emptyBlocks: BlocksDocument = { version: 1, workspace: { blocks: { languageVersion: 0, blocks: [{ type: 'pixel_entry', id: 'pixel-entry', x: 24, y: 24 }] } } }
+export const emptyVoxelBlocks: BlocksDocument = { version: 2, mode: '3d', workspace: { blocks: { languageVersion: 0, blocks: [{ type: 'voxel_entry', id: 'voxel-entry', x: 24, y: 24 }] } } }
+export const emptyBlocksFor = (mode: SpaceMode): BlocksDocument => mode === '3d' ? emptyVoxelBlocks : emptyBlocks
 export type Compilation = { code: string; lineBlocks: Record<number, string>; issues: { id: string; message: string }[] }
 export function compileBlocks(document: BlocksDocument): Compilation {
   const nodes = document.workspace.blocks.blocks
@@ -104,7 +113,7 @@ export function compileBlocks(document: BlocksDocument): Compilation {
   }
   function expression(b: BlockNode): string {
     switch (b.type) {
-      case 'pixel_coord': return String(b.fields!.AXIS)
+      case 'pixel_coord': case 'voxel_coord': return String(b.fields!.AXIS)
       case 'pixel_integer': return String(b.fields!.NUM)
       case 'pixel_color': return String(b.fields!.COLOR)
       case 'pixel_abs': return `abs(${exprInput(b, 'VALUE')})`
@@ -131,9 +140,10 @@ export function compileBlocks(document: BlocksDocument): Compilation {
       b = b.next?.block
     }
   }
-  const root = nodes.find(b => b.type === 'pixel_entry')!
+  const is3d = document.version === 2
+  const root = nodes.find(b => b.type === (is3d ? 'voxel_entry' : 'pixel_entry'))!
   for (const node of nodes) if (node !== root) issues.push({ id: node.id, message: '请连接游离积木，或将不用的积木删除。' })
-  emit('def pixel(x, y):', root)
+  emit(is3d ? 'def voxel(x, y, z):' : 'def pixel(x, y):', root)
   statements(child(root, 'BODY'), 1)
   emit('    return 0', root)
   return { code: issues.length ? '' : lines.join('\n') + '\n', lineBlocks, issues }

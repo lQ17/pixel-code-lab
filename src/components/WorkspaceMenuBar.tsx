@@ -183,7 +183,7 @@ export function WorkspaceMenuBar({
         </button>
         {openMenu === 'edit' && (
           <div className="menu-dropdown" role="menu">
-            {!is3d && onSwitchEditor && (
+            {onSwitchEditor && (
               <>
                 <div className="menu-section-title">编辑方式</div>
                 <button
