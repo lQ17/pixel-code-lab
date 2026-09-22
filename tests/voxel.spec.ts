@@ -6,6 +6,7 @@ import {
   stopCode,
   loadExample,
   resetVoxelView,
+  setVoxelTopDownView,
 } from './helpers'
 
 test('三维示例、视角、错误恢复、独立存档和模式取消', async ({ page, context }) => {
@@ -37,6 +38,21 @@ test('三维示例、视角、错误恢复、独立存档和模式取消', async
   await page.mouse.up()
   await expect(canvas).not.toHaveAttribute('data-view', before!)
   await page.mouse.wheel(0, -200)
+
+  // 俯视视角（数格子）切换与截图
+  await setVoxelTopDownView(page)
+  await expect(canvas).toHaveAttribute('data-view', /^0,1\.5707/)
+  await page.screenshot({ path: 'test-results/voxel-topdown.png', fullPage: true })
+
+  // 自由向上拖拽可突破原 1.45 限制
+  await canvas.hover()
+  await page.mouse.down()
+  await page.mouse.move(1100, 700, { steps: 8 })
+  await page.mouse.up()
+  const topView = await canvas.getAttribute('data-view')
+  const topPitch = parseFloat(topView!.split(',')[1])
+  expect(topPitch).toBeGreaterThan(1.45)
+
   await resetVoxelView(page)
   await expect(canvas).toHaveAttribute('data-view', before!)
 

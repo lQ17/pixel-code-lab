@@ -359,6 +359,12 @@ export function WorkspaceMenuBar({
                 <div className="menu-divider" />
                 <button
                   role="menuitem"
+                  onClick={() => handleAction(() => voxelControls.setView(prev => ({ ...prev, yaw: 0, pitch: Math.PI / 2 })))}
+                >
+                  俯视视角（数格子）
+                </button>
+                <button
+                  role="menuitem"
                   onClick={() => handleAction(() => voxelControls.setView({ yaw: -0.65, pitch: 0.45, zoom: 1 }))}
                 >
                   重置视角

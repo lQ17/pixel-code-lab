@@ -247,3 +247,12 @@ export async function resetVoxelView(page: Page) {
   await item.click()
 }
 
+/**
+ * 切换 3D 俯视视角
+ */
+export async function setVoxelTopDownView(page: Page) {
+  await openMenu(page, '视图')
+  const item = page.getByRole('menuitem', { name: /俯视视角/ })
+  await item.click()
+}
+
