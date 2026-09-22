@@ -147,8 +147,9 @@ h1{font-size:21px;letter-spacing:3px;line-height:1.5}.brand .micro{font-size:9px
 .heading-tags{display:flex;align-items:center;gap:6px}
 .clip-tag{color:#eec47a;border-color:#755520;background:#2e1f0b}
 .canvas-frame{flex:1;min-height:0;position:relative;overflow:hidden;background:#0c1822}
-.canvas-frame .voxel-viewport{margin:0;border:0;width:100%;height:100%}
-.canvas-frame .pixel-result-wrap{width:100%;height:100%;position:relative}
+.canvas-frame .voxel-viewport{margin:0;border:0;width:100%;height:100%;min-height:0}
+.canvas-frame .pixel-result-wrap,
+.canvas-frame .voxel-result-wrap{width:100%;height:100%;position:relative}
 .historical-banner{position:absolute;bottom:6px;left:8px;font-size:9px;color:#dda96a;background:#10202ebd;padding:2px 6px;border:1px solid #664d26;pointer-events:none;z-index:3}
 
 /* --- 顶栏紧凑菜单栏 WorkspaceMenuBar --- */
