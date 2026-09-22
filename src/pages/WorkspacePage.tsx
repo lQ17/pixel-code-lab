@@ -42,6 +42,7 @@ interface WorkspacePageProps {
   error: string
   runtimeError: string
   errorLocation?: { line: number; message: string }
+  errorBlock?: string
   logs: string
   status: RunnerStatus
   work?: Work
@@ -92,6 +93,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
     error,
     runtimeError,
     errorLocation,
+    errorBlock,
     logs,
     status,
     work,
@@ -221,7 +223,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
             axisMode={axisMode}
             voxelControls={voxelControls}
             selectedPixelRefId={pixelReferenceId}
-            selectedVoxelRefId={voxelLevelId}
+            selectedVoxelRefId={voxelRefId}
             levelId={levelId}
             library={library}
             showOutput={showOutput}
@@ -285,7 +287,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
                   document={blocksDocument}
                   onChange={onChangeBlocks}
                   onError={onSetBlocksError}
-                  errorBlock={errorLocation ? undefined : undefined}
+                  errorBlock={errorBlock}
                 />
               ) : (
                 <CodeEditor
@@ -529,7 +531,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
           onClose={() => setShowLibrary(false)}
         />
       )}
-      {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
+      {showHelp && <HelpDialog mode={mode} activity={isCreation ? 'create' : 'challenge'} isBlocks={isBlocks} onClose={() => setShowHelp(false)} />}
     </main>
   )
 }

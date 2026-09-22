@@ -183,7 +183,7 @@ export function WorkspaceMenuBar({
         </button>
         {openMenu === 'edit' && (
           <div className="menu-dropdown" role="menu">
-            {!is3d && isCreation && onSwitchEditor && (
+            {!is3d && onSwitchEditor && (
               <>
                 <div className="menu-section-title">编辑方式</div>
                 <button
@@ -202,13 +202,13 @@ export function WorkspaceMenuBar({
                 </button>
                 {isBlocks && (
                   <>
-                    <button
+                    {isCreation && <button
                       role="menuitem"
                       disabled={!code || !!blocksError}
                       onClick={() => handleAction(library.copyPython)}
                     >
                       复制为 Python 作品
-                    </button>
+                    </button>}
                     <button
                       role="menuitem"
                       aria-checked={showBlocksCode}
@@ -297,7 +297,7 @@ export function WorkspaceMenuBar({
                   网格尺寸：{is3d ? '17 × 17 × 17 体素' : `${levels.find(l => l.id === levelId)?.radius ? levels.find(l => l.id === levelId)!.radius * 2 + 1 : 11} × ${levels.find(l => l.id === levelId)?.radius ? levels.find(l => l.id === levelId)!.radius * 2 + 1 : 11} 像素`}
                 </div>
                 <div className="menu-info-item subtle">
-                  挑战模式不提供参考答案或目标公式
+                  {is3d ? '三维挑战可通过「编辑」显式载入示例' : '挑战模式不提供参考答案或目标公式'}
                 </div>
               </>
             )}

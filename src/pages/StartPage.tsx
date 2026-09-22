@@ -217,6 +217,8 @@ export function StartPage({
 
       {showHelp && (
         <HelpDialog
+          mode={mode}
+          activity={activity}
           onClose={() => {
             setShowHelp(false)
             onHelpClosed()

@@ -16,6 +16,8 @@ export interface Progress {
   mode?: '2d' | '3d'
   pixelActivity?: 'challenge' | 'create'
   pixelEditor?: EditorKind
+  pixelChallengeEditors?: Record<string, EditorKind>
+  pixelChallengeBlocks?: Record<string, BlocksDocument>
   pixelBlocks?: { document: BlocksDocument; name: string; referenceId: PixelReferenceId; projectId: string | null }
   pixelCode?: string
   pixelReferenceId?: PixelReferenceId
@@ -85,6 +87,22 @@ export function parseProgress(raw: string | null): Progress {
   if (data.pixelReferenceId !== undefined && !isPixelReferenceId(data.pixelReferenceId)) throw new Error('无效二维参考图')
   const pixelProjects = parseProjectLibrary(data.pixelProjects, '2d')
   if (data.pixelEditor !== undefined && data.pixelEditor !== 'python' && data.pixelEditor !== 'blocks') throw new Error('无效二维编辑方式')
+  const pixelChallengeEditors: Record<string, EditorKind> = {}
+  const pixelChallengeBlocks: Record<string, BlocksDocument> = {}
+  if (data.pixelChallengeEditors !== undefined) {
+    if (!data.pixelChallengeEditors || typeof data.pixelChallengeEditors !== 'object' || Array.isArray(data.pixelChallengeEditors)) throw new Error('无效二维挑战编辑方式')
+    for (const [id, editor] of Object.entries(data.pixelChallengeEditors)) {
+      if (!levels.some(level => level.id === id) || (editor !== 'python' && editor !== 'blocks')) throw new Error('无效二维挑战编辑方式')
+      pixelChallengeEditors[id] = editor
+    }
+  }
+  if (data.pixelChallengeBlocks !== undefined) {
+    if (!data.pixelChallengeBlocks || typeof data.pixelChallengeBlocks !== 'object' || Array.isArray(data.pixelChallengeBlocks)) throw new Error('无效二维挑战积木')
+    for (const [id, document] of Object.entries(data.pixelChallengeBlocks)) {
+      if (!levels.some(level => level.id === id)) throw new Error('无效二维挑战积木关卡')
+      pixelChallengeBlocks[id] = parseBlocks(document)
+    }
+  }
   let pixelBlocks: Progress['pixelBlocks']
   if (data.pixelBlocks !== undefined) {
     if (!data.pixelBlocks || typeof data.pixelBlocks !== 'object' || Array.isArray(data.pixelBlocks)) throw new Error('无效积木草稿')
@@ -98,7 +116,7 @@ export function parseProgress(raw: string | null): Progress {
   const voxelProjects = parseProjectLibrary(data.voxelProjects)
   if (data.voxelProjectId !== undefined && data.voxelProjectId !== null && (typeof data.voxelProjectId !== 'string' || !voxelProjects.some(project => project.id === data.voxelProjectId))) throw new Error('无效的当前作品')
   if (data.voxelDraftName !== undefined && (typeof data.voxelDraftName !== 'string' || data.voxelDraftName.length > maxProjectName)) throw new Error('无效的草稿名称')
-  return { schemaVersion: 1, codes, passed, pixelProjects, pixelBlocks, pixelEditor: data.pixelEditor as EditorKind | undefined, pixelActivity: data.pixelActivity as Progress['pixelActivity'], pixelCode: data.pixelCode as string | undefined, pixelReferenceId: data.pixelReferenceId as PixelReferenceId | undefined, pixelProjectId: data.pixelProjectId as Progress['pixelProjectId'], pixelDraftName: data.pixelDraftName as string | undefined, voxelPassed, voxelCodes, voxelLevelId, voxelReferenceId, voxelProjects, voxelProjectId: data.voxelProjectId as Progress['voxelProjectId'], voxelDraftName: data.voxelDraftName as string | undefined, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
+  return { schemaVersion: 1, codes, passed, pixelChallengeEditors, pixelChallengeBlocks, pixelProjects, pixelBlocks, pixelEditor: data.pixelEditor as EditorKind | undefined, pixelActivity: data.pixelActivity as Progress['pixelActivity'], pixelCode: data.pixelCode as string | undefined, pixelReferenceId: data.pixelReferenceId as PixelReferenceId | undefined, pixelProjectId: data.pixelProjectId as Progress['pixelProjectId'], pixelDraftName: data.pixelDraftName as string | undefined, voxelPassed, voxelCodes, voxelLevelId, voxelReferenceId, voxelProjects, voxelProjectId: data.voxelProjectId as Progress['voxelProjectId'], voxelDraftName: data.voxelDraftName as string | undefined, voxelActivity: data.voxelActivity as Progress['voxelActivity'], levelId: data.levelId as string, introSeen: data.introSeen, voxelExample: data.voxelExample as number | undefined, mode: data.mode as Progress['mode'], voxelCode: data.voxelCode as string | undefined }
 }
 function load() {
   try {
