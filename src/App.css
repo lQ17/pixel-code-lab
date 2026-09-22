@@ -61,3 +61,8 @@ h1{font-size:21px;letter-spacing:3px;line-height:1.5}.brand .micro{font-size:9px
 .level-rail>.voxel-activity{margin-bottom:12px}.level-rail:has([aria-label="二维参考图"]) .level-button{min-height:90px}
 
 .board-body--solo,.result-board-body{grid-template-columns:minmax(0,1fr)}
+
+.editor-switch{display:flex;gap:6px;padding:7px 12px;border-bottom:1px solid #253746;flex-shrink:0}.editor-switch button{font-size:11px;padding:5px 9px}.editor-switch button[aria-pressed=true]{color:var(--mint);border-color:var(--mint);background:#183b3d}.editor-switch button:last-child:not([aria-pressed]){margin-left:auto}
+.blocks-editor-wrap{display:flex;flex-direction:column;flex:1;min-height:150px;overflow:hidden}.blocks-editor{flex:1;min-height:100px;position:relative}.blocks-editor .blocklySvg{position:absolute;inset:0}.blocks-warning{font-size:11px;color:#ffd1a6;background:#362b23;padding:5px 10px;flex-shrink:0}.blocks-hint{font-size:10px;color:#8ba5b6;padding:4px 10px;flex-shrink:0}.blocks-python{margin:0;border-top:1px solid #253746;flex-shrink:0;max-height:150px;overflow:auto}.blocks-python summary{padding:7px 12px}.blocks-python pre{margin:0;padding:8px 12px}.blocks-python p{font-size:11px;color:#ffc5bb;padding:4px 12px}.blocklyToolboxCategoryLabel{font-size:12px}.blocklyToolbox{padding:4px!important}.blocklyToolboxCategory{padding:3px!important}.blocklyWidgetDiv,.blocklyDropDownDiv{z-index:100}
+
+.blocks-hint{display:flex;align-items:center;justify-content:space-between;gap:6px}.blocks-hint button{font-size:10px;padding:2px 6px}

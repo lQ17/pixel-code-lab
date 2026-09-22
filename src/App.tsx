@@ -1,3 +1,5 @@
+import { compileBlocks, emptyBlocks, type BlocksDocument, type EditorKind } from './blocks/model'
+import { blocksExample } from './blocks/examples'
 import { defaultPixelId, pixelRadius, pixelReferences, pixelReferenceIds, pixelReference, type PixelReferenceId } from './engine/pixelCreation'
 import { downloadPng } from './renderers/projectImage'
 import { useVoxelControls } from './hooks/useVoxelControls'
@@ -12,12 +14,13 @@ import { PixelCanvas } from './renderers/PixelCanvas'
 import { useProgress } from './hooks/useProgress'
 import { HelpDialog } from './components/HelpDialog'
 import { ProjectLibrary } from './components/ProjectLibrary'
-import { useProjectLibrary } from './hooks/useProjectLibrary'
+import { patchCreationDraft, useProjectLibrary } from './hooks/useProjectLibrary'
 import { LevelGlyph, PixelMark } from './components/GameIcons'
 import { VoxelCanvas } from './renderers/VoxelCanvas'
 import { defaultVoxelId, getVoxelLevel, voxelRadius, voxelStarter, voxelReference, voxelTargetIds, type VoxelLevelId } from './engine/voxel'
 import './App.css'
 
+const BlocksEditor = lazy(() => import('./components/BlocksEditor'))
 const CodeEditor = lazy(() => import('./components/CodeEditor'))
 type Work = { origin: Origin; colors: number[]; score: ReturnType<typeof evaluate> | null; elapsedMs: number; source: string }
 const labels: Record<RunnerStatus, string> = { loading: '正在加载 Python…', recovering: '正在恢复 Python…', ready: 'Python 已就绪', running: '运行中…', failed: 'Python 加载失败' }
@@ -30,10 +33,13 @@ export default function App() {
   const voxelActivity = progress.voxelActivity ?? 'create'
   const pixelActivity = progress.pixelActivity ?? 'challenge'
   const isCreation = is3d ? voxelActivity === 'create' : pixelActivity === 'create'
-  const pixelReferenceId = progress.pixelReferenceId ?? defaultPixelId
+  const isBlocks = !is3d && isCreation && progress.pixelEditor === 'blocks'
+  const blocksDocument = progress.pixelBlocks?.document ?? emptyBlocks
+  const compilation = useMemo(() => compileBlocks(blocksDocument), [blocksDocument])
+  const pixelReferenceId = (isBlocks ? progress.pixelBlocks?.referenceId : progress.pixelReferenceId) ?? defaultPixelId
   const selectedPixelReference = pixelReferences[pixelReferenceId]
   const voxelLevelId = progress.voxelLevelId ?? defaultVoxelId
-  const activeId = isCreation ? is3d ? 'voxel-creation' : 'pixel-creation' : is3d ? voxelLevelId : levelId
+  const activeId = isCreation ? is3d ? 'voxel-creation' : isBlocks ? 'pixel-blocks' : 'pixel-creation' : is3d ? voxelLevelId : levelId
   const template = is3d ? voxelStarter : starterCode
   const voxelControls = useVoxelControls(voxelRadius)
   const referenceId = is3d && isCreation ? progress.voxelReferenceId ?? defaultVoxelId : voxelLevelId
@@ -48,6 +54,7 @@ export default function App() {
   const [runtimeError, setRuntimeError] = useState('')
   const [error, setError] = useState('')
   const [errorLocation, setErrorLocation] = useState<{ line: number; message: string }>()
+  const [blocksError, setBlocksError] = useState('')
   const [logs, setLogs] = useState('')
   const [stale, setStale] = useState<Record<string, boolean>>({})
   const [view, setView] = useState(initialView)
@@ -59,10 +66,10 @@ export default function App() {
     generation.current++
     runner.current?.stop()
     setCreationRevision(value => value + 1)
-    setWorks(previous => { const next = { ...previous }; delete next[activeId]; return next })
-    setStale(previous => { const next = { ...previous }; delete next[activeId]; return next })
-    setError(''); setLogs(''); setErrorLocation(undefined); setView(initialView)
-  }, mode, works[activeId])
+    setWorks(previous => { const next = { ...previous }; for (const key of mode === '2d' ? ['pixel-creation', 'pixel-blocks'] : ['voxel-creation']) delete next[key]; return next })
+    setStale(previous => { const next = { ...previous }; for (const key of mode === '2d' ? ['pixel-creation', 'pixel-blocks'] : ['voxel-creation']) delete next[key]; return next })
+    setError(''); setLogs(''); setErrorLocation(undefined); setBlocksError(''); setView(initialView)
+  }, mode, works[activeId], isBlocks && blocksError ? `${blocksError} 请先撤销或修正积木，再保存或切换作品。` : '')
   useEffect(() => {
     const tickets = generation
     const instance = new PythonRunner((next, detail) => { setStatus(next); setRuntimeError(detail ?? '') })
@@ -73,7 +80,7 @@ export default function App() {
   const level = !is3d && isCreation ? { ...selectedPixelReference, id: pixelReferenceId, radius: pixelRadius } : challengeLevel
   const target = useMemo(() => !is3d && isCreation ? pixelReference(pixelReferenceId) : targetColors(challengeLevel), [is3d, isCreation, pixelReferenceId, challengeLevel])
   const blank = useMemo(() => target.map(() => 0), [target])
-  const code = is3d ? (isCreation ? progress.voxelCode : progress.voxelCodes?.[voxelLevelId]) ?? voxelStarter : (isCreation ? progress.pixelCode : codes[levelId]) ?? starterCode
+  const code = isBlocks ? compilation.code : is3d ? (isCreation ? progress.voxelCode : progress.voxelCodes?.[voxelLevelId]) ?? voxelStarter : (isCreation ? progress.pixelCode : codes[levelId]) ?? starterCode
   useEffect(() => { latestSource.current = code }, [code])
   const work = works[activeId]
   const isHistorical = work && (stale[activeId] || work.source !== code)
@@ -84,7 +91,7 @@ export default function App() {
   const size = level.radius * 2 + 1
 
   async function run() {
-    if (!runner.current || status !== 'ready') return
+    if (!runner.current || status !== 'ready' || (isBlocks && (!code || blocksError))) return
     const ticket = ++generation.current
     const selected = activeId
     const source = code
@@ -122,7 +129,28 @@ export default function App() {
   function codePatch(value: string) {
     return is3d ? isCreation ? { voxelCode: value } : { voxelCodes: { ...progress.voxelCodes, [voxelLevelId]: value } } : isCreation ? { pixelCode: value } : { codes: { ...codes, [levelId]: value } }
   }
+  function changeBlocks(document: BlocksDocument) {
+    update(patchCreationDraft(progress, '2d', 'blocks', { document }))
+    setErrorLocation(undefined)
+  }
+  function replaceBlocks(document: BlocksDocument) {
+    generation.current++; runner.current?.stop()
+    update(patchCreationDraft(progress, '2d', 'blocks', { document }), true)
+    setCreationRevision(value => value + 1)
+    setBlocksError(''); setError(''); setLogs(''); setErrorLocation(undefined)
+  }
+  function switchEditor(editor: EditorKind) {
+    if (isBlocks && blocksError) { setError('请先撤销或修正超出限制的积木，再切换编辑方式或玩法。'); return }
+    if ((progress.pixelEditor ?? 'python') === editor) return
+    generation.current++; runner.current?.stop()
+    update({ pixelEditor: editor }, true)
+    library.clearFeedback(); setBlocksError(''); setError(''); setLogs(''); setErrorLocation(undefined)
+  }
   function restoreTemplate() {
+    if (isBlocks) {
+      if (!window.confirm('恢复初始积木？当前积木将被替换。')) return
+      replaceBlocks(emptyBlocks); return
+    }
     if (code === template || !window.confirm('恢复初始代码？当前代码将被替换，历史通关记录会保留。')) return
     generation.current++
     runner.current?.stop()
@@ -130,6 +158,7 @@ export default function App() {
     setError(''); setLogs(''); setErrorLocation(undefined)
   }
   function switchMode(next: '2d' | '3d') {
+    if (isBlocks && blocksError) { setError('请先撤销或修正超出限制的积木，再切换编辑方式或玩法。'); return }
     if (next === mode) return
     generation.current++
     runner.current?.stop()
@@ -152,6 +181,7 @@ export default function App() {
     setError(''); setLogs(''); setErrorLocation(undefined)
   }
   function switchPixelActivity(next: 'challenge' | 'create') {
+    if (isBlocks && blocksError) { setError('请先撤销或修正超出限制的积木，再切换编辑方式或玩法。'); return }
     if (next === pixelActivity) return
     generation.current++
     runner.current?.stop()
@@ -162,10 +192,14 @@ export default function App() {
     if (id === pixelReferenceId) return
     generation.current++
     runner.current?.stop()
-    update({ pixelReferenceId: id }, true)
+    update(isBlocks ? patchCreationDraft(progress, mode, 'blocks', { referenceId: id }) : { pixelReferenceId: id }, true)
     setError(''); setLogs(''); setErrorLocation(undefined)
   }
   function loadExample() {
+    if (isBlocks) {
+      if (!window.confirm('载入积木示例将替换当前积木，是否继续？')) return
+      replaceBlocks(blocksExample(pixelReferenceId)); return
+    }
     const source = is3d ? selectedVoxelLevel.exampleCode : selectedPixelReference.exampleCode
     if (source === undefined) return
     if (code !== template && code !== source && !window.confirm('载入示例将替换当前创作或挑战代码，是否继续？')) return
@@ -190,11 +224,13 @@ export default function App() {
         <div className="rail-bottom"><div className="tiny-pixels" aria-hidden="true"><i/><i/><i/><i/><i/></div></div></>}
       </aside>}
       <div className="workspace">
-        <section className="editor-panel game-panel"><header className="panel-heading"><div><span className="micro">CODE TERMINAL</span><h2>代码工作台</h2></div><span className="tag">PYTHON</span></header>
-          <div className="file-tab"><span><i/> {is3d ? isCreation ? 'creation_3d.py' : `voxel_0${voxelLevelNumber}.py` : isCreation ? 'creation_2d.py' : `challenge_0${levelNumber}.py`}</span><div className="code-tools">{((is3d && selectedVoxelLevel.exampleCode !== undefined) || (!is3d && isCreation)) && <button className="text-button" onClick={loadExample}>载入示例</button>}<button className="text-button" onClick={restoreTemplate} disabled={code === template}>恢复初始代码</button></div></div>
-          {isCreation && <div className="project-toolbar"><span title={library.name || '未命名草稿'}>{library.name || '未命名草稿'}{library.modified ? ' · 待保存到作品库' : library.active ? ' · 已保存' : ''}</span><div><button onClick={() => library.name.trim() ? library.save() : setShowLibrary(true)}>保存作品</button><button onClick={() => setShowLibrary(true)}>作品库</button><button disabled={!work || !!isHistorical || status === 'running'} onClick={() => work && downloadPng(work.colors, mode, library.name)} title="导出与当前代码一致的完整作品；修改后请重新运行">导出 PNG</button></div>{!showLibrary && (library.error || library.notice) && <p role={library.error ? 'alert' : 'status'} className={library.error ? 'project-error' : 'project-notice'}>{library.error || library.notice}</p>}</div>}
-          <Suspense fallback={<div className="editor-loading"><PixelMark/><span>正在加载代码编辑器…</span></div>}><CodeEditor key={isCreation ? `${activeId}-${creationRevision}` : activeId} value={code} onChange={changeCode} error={errorLocation}/></Suspense>
-          <div className="execution-dock"><div className="actions"><button className="run-button" onClick={() => void run()} disabled={status !== 'ready'} aria-label="运行"><span aria-hidden="true">▶</span> 运行代码 <span className="micro">RUN</span></button><button className="stop-button" aria-label="停止" onClick={() => runner.current?.stop()} disabled={status !== 'running'}><span aria-hidden="true">■</span> 停止</button>{status === 'failed' && <button onClick={() => runner.current?.retry()}>重试加载</button>}</div><p className={`runtime-state ${status}`} role="status"><i/>{labels[status]}</p></div>
+        <section className="editor-panel game-panel"><header className="panel-heading"><div><span className="micro">CODE TERMINAL</span><h2>代码工作台</h2></div><span className="tag">{isBlocks ? 'BLOCKS → PYTHON' : 'PYTHON'}</span></header>
+          {!is3d && isCreation && <div className="editor-switch" role="group" aria-label="编辑方式"><button aria-pressed={!isBlocks} onClick={() => switchEditor('python')}>Python</button><button aria-pressed={isBlocks} onClick={() => switchEditor('blocks')}>积木</button>{isBlocks && <button disabled={!code || !!blocksError} onClick={library.copyPython}>复制为 Python 作品</button>}</div>}
+          <div className="file-tab"><span><i/> {is3d ? isCreation ? 'creation_3d.py' : `voxel_0${voxelLevelNumber}.py` : isCreation ? 'creation_2d.py' : `challenge_0${levelNumber}.py`}</span><div className="code-tools">{((is3d && selectedVoxelLevel.exampleCode !== undefined) || (!is3d && isCreation)) && <button className="text-button" onClick={loadExample}>载入示例</button>}<button className="text-button" onClick={restoreTemplate} disabled={!isBlocks && code === template}>{isBlocks ? '恢复初始积木' : '恢复初始代码'}</button></div></div>
+          {isCreation && <div className="project-toolbar"><span title={library.name || '未命名草稿'}>{library.name || '未命名草稿'}{library.modified ? ' · 待保存到作品库' : library.active ? ' · 已保存' : ''}</span><div><button disabled={isBlocks && !!blocksError} onClick={() => library.name.trim() ? library.save() : setShowLibrary(true)}>保存作品</button><button onClick={() => setShowLibrary(true)}>作品库</button><button disabled={!work || !!isHistorical || status === 'running' || (isBlocks && !!blocksError)} onClick={() => work && downloadPng(work.colors, mode, library.name)} title="导出与当前代码一致的完整作品；修改后请重新运行">导出 PNG</button></div>{!showLibrary && (library.error || library.notice) && <p role={library.error ? 'alert' : 'status'} className={library.error ? 'project-error' : 'project-notice'}>{library.error || library.notice}</p>}</div>}
+          <Suspense fallback={<div className="editor-loading"><PixelMark/><span>正在加载代码编辑器…</span></div>}>{isBlocks ? <BlocksEditor key={`${activeId}-${creationRevision}`} document={blocksDocument} onChange={changeBlocks} onError={setBlocksError} errorBlock={errorLocation ? compilation.lineBlocks[errorLocation.line] : undefined}/> : <CodeEditor key={isCreation ? `${activeId}-${creationRevision}` : activeId} value={code} onChange={changeCode} error={errorLocation}/>}</Suspense>
+          {isBlocks && <details className="blocks-python"><summary>查看 Python 代码</summary><pre aria-label="积木生成的 Python">{code || '请先补齐积木连接。'}</pre>{errorLocation && <p>第 {errorLocation.line} 行：{errorLocation.message}</p>}</details>}
+          <div className="execution-dock"><div className="actions"><button className="run-button" onClick={() => void run()} disabled={status !== 'ready' || (isBlocks && (!code || !!blocksError))} aria-label="运行"><span aria-hidden="true">▶</span> 运行代码 <span className="micro">RUN</span></button><button className="stop-button" aria-label="停止" onClick={() => runner.current?.stop()} disabled={status !== 'running'}><span aria-hidden="true">■</span> 停止</button>{status === 'failed' && <button onClick={() => runner.current?.retry()}>重试加载</button>}</div><p className={`runtime-state ${status}`} role="status"><i/>{labels[status]}</p></div>
           <div className="console-output" aria-live="polite">{(error || runtimeError) && <div className="error" role="alert">{error || runtimeError}</div>}{logs && <details open><summary>程序输出（最多 4000 字符）</summary><pre>{logs}</pre></details>}</div>
           <div className="palette-dock"><div className="dock-label"><h2>调色模块</h2><span className="micro">RETURN 0—8</span></div><div className="palette">{palette.map((color, index) => <span key={index} title={`${index} · ${colorNames[index]}`}><i style={{ background: index === 0 ? 'transparent' : color }} className={index === 0 ? 'empty-color' : ''}/><b>{index}</b><em>{colorNames[index]}</em></span>)}</div></div>
           <div className="storage-status" data-testid="storage-status" data-save-state={saveState} aria-live="polite"><span className={saveState === 'error' ? 'save-error' : ''}>{saveState === 'saved' ? '' : saveState === 'pending' ? '◇ 正在保存…' : message}</span>{saveState === 'error' && <button onClick={retrySave}>重试保存</button>}</div>
@@ -209,7 +245,7 @@ export default function App() {
       </div>
     </div>
     <footer className="game-footer"/>
-    {isCreation && showLibrary && <ProjectLibrary library={library} onName={name => update(is3d ? { voxelDraftName: name } : { pixelDraftName: name })} onClose={() => setShowLibrary(false)}/>}
+    {isCreation && showLibrary && <ProjectLibrary library={library} onName={name => update(patchCreationDraft(progress, mode, library.editor, { name }))} onClose={() => setShowLibrary(false)}/>}
     {showHelp && <HelpDialog onClose={() => { setShowHelp(false); update({ introSeen: true }, true) }}/>}
   </main>
 }

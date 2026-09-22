@@ -1,3 +1,4 @@
+import { compileBlocks, parseBlocks, type BlocksDocument } from '../blocks/model'
 import { isPixelReferenceId, pixelRadius } from './pixelCreation'
 import type { SpaceMode } from '../runners/types'
 import { isVoxelLevelId, voxelRadius } from './voxel'
@@ -7,6 +8,8 @@ export interface Project {
   name: string
   code: string
   referenceId: string
+  editor?: 'blocks'
+  blocks?: BlocksDocument
   preview?: string
   createdAt: string
   updatedAt: string
@@ -32,6 +35,12 @@ export function parseProject(value: unknown, mode: SpaceMode = '3d'): Project {
   const name = projectName(data.name)
   if (typeof data.code !== 'string' || data.code.length > maxProjectCode) throw new Error('作品代码必须是文本，且不超过 200000 个字符。')
   if (!(mode === '3d' ? isVoxelLevelId(data.referenceId) : isPixelReferenceId(data.referenceId))) throw new Error('作品参考模型无效。')
+  if (data.editor !== undefined && data.editor !== 'blocks') throw new Error('不支持此作品编辑方式。')
+  if ((data.editor === 'blocks' && (mode !== '2d' || data.blocks === undefined)) || (data.editor === undefined && data.blocks !== undefined)) throw new Error('积木作品信息不完整。')
+  const blocks = data.editor === 'blocks' ? parseBlocks(data.blocks) : undefined
+  const compiled = blocks ? compileBlocks(blocks) : undefined
+  const code = compiled ? compiled.code : data.code
+  const validPreview = !compiled || (!!code && code === data.code)
   const count = mode === '3d' ? (voxelRadius * 2 + 1) ** 3 : (pixelRadius * 2 + 1) ** 2
   if (data.preview !== undefined && (typeof data.preview !== 'string' || data.preview.length !== count || /[^0-8]/.test(data.preview))) throw new Error('作品预览无效。')
   for (const key of ['createdAt', 'updatedAt']) {
@@ -39,7 +48,7 @@ export function parseProject(value: unknown, mode: SpaceMode = '3d'): Project {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString() !== value) throw new Error('作品时间无效。')
   }
   if (String(data.updatedAt) < String(data.createdAt)) throw new Error('作品更新时间早于创建时间。')
-  return { id: data.id, name, code: data.code, referenceId: data.referenceId as string, ...(data.preview !== undefined ? { preview: data.preview as string } : {}), createdAt: data.createdAt as string, updatedAt: data.updatedAt as string }
+  return { id: data.id, name, code, ...(blocks ? { editor: 'blocks' as const, blocks } : {}), referenceId: data.referenceId as string, ...(data.preview !== undefined && validPreview ? { preview: data.preview as string } : {}), createdAt: data.createdAt as string, updatedAt: data.updatedAt as string }
 }
 
 export function parseProjectLibrary(value: unknown, mode: SpaceMode = '3d'): Project[] {
@@ -62,15 +71,17 @@ export function uniqueProjectName(name: string, projects: Project[]): string {
 
 export function exportProject(project: Project, mode: SpaceMode = '3d'): string {
   const { id: _id, ...content } = parseProject(project, mode)
-  return JSON.stringify({ format: mode === '3d' ? 'pixel-code-lab.voxel-project' : 'pixel-code-lab.pixel-project', version: 1, mode, language: 'python', radius: mode === '3d' ? voxelRadius : pixelRadius, project: content }, null, 2)
+  return JSON.stringify({ format: mode === '3d' ? 'pixel-code-lab.voxel-project' : 'pixel-code-lab.pixel-project', version: content.editor === 'blocks' ? 2 : 1, mode, language: 'python', radius: mode === '3d' ? voxelRadius : pixelRadius, project: content }, null, 2)
 }
 
 export function importProject(raw: string, id: string, mode: SpaceMode = '3d'): Project {
   if (new TextEncoder().encode(raw).byteLength > maxProjectFileBytes) throw new Error('作品文件不能超过 1 MB。')
   let data: Record<string, unknown>
   try { data = object(JSON.parse(raw)) } catch { throw new Error('无法读取作品文件，请选择导出的 JSON 作品文件。') }
-  if (data.format !== (mode === '3d' ? 'pixel-code-lab.voxel-project' : 'pixel-code-lab.pixel-project') || data.version !== 1 || data.mode !== mode || data.language !== 'python' || data.radius !== (mode === '3d' ? voxelRadius : pixelRadius)) throw new Error('不支持此作品格式、版本、语言或空间尺寸。')
-  return parseProject({ ...object(data.project), id }, mode)
+  if (data.format !== (mode === '3d' ? 'pixel-code-lab.voxel-project' : 'pixel-code-lab.pixel-project') || (data.version !== 1 && !(mode === '2d' && data.version === 2)) || data.mode !== mode || data.language !== 'python' || data.radius !== (mode === '3d' ? voxelRadius : pixelRadius)) throw new Error('不支持此作品格式、版本、语言或空间尺寸。')
+  const content = object(data.project)
+  if ((data.version === 2 && content.editor !== 'blocks') || (data.version === 1 && (content.editor !== undefined || content.blocks !== undefined))) throw new Error('作品版本与编辑方式不一致。')
+  return parseProject({ ...content, id }, mode)
 }
 
 export function projectFilename(name: string): string {

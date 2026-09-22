@@ -36,7 +36,7 @@ export function ProjectLibrary({ library, onName, onClose }: { library: Library;
       if (file) void library.importFile(file)
     }}/></div>
     <ul className="project-list">{projects.map(project => <li key={project.id} data-project-id={project.id}>
-      <Thumbnail preview={project.preview} mode={library.mode} name={project.name}/><div className="project-description"><strong>{project.name}</strong><small>更新于 {new Date(project.updatedAt).toLocaleString('zh-CN', { hour12: false })}{project.id === library.active?.id ? ' · 当前作品' : ''}</small></div>
+      <Thumbnail preview={project.preview} mode={library.mode} name={project.name}/><div className="project-description"><strong>{project.name}</strong><small>{project.editor === 'blocks' ? '积木 · ' : 'Python · '}更新于 {new Date(project.updatedAt).toLocaleString('zh-CN', { hour12: false })}{project.id === library.active?.id ? ' · 当前作品' : ''}</small></div>
       <div className="project-actions"><button onClick={() => library.open(project.id)} aria-label={`打开 ${project.name}`}>打开</button><button onClick={() => library.download(project)} aria-label={`导出 ${project.name}`}>导出</button><button disabled={!project.preview} onClick={() => downloadPng([...project.preview!].map(Number), library.mode, project.name)} aria-label={`导出 PNG ${project.name}`}>PNG</button></div>
     </li>)}</ul>
     {!projects.length && <p className="project-empty">还没有保存的作品。给当前草稿命名后保存，或导入作品文件。</p>}
