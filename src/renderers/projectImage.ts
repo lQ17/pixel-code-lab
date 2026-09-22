@@ -4,6 +4,7 @@ import { voxelRadius } from '../engine/voxel'
 import { projectFilename } from '../engine/projects'
 import type { SpaceMode } from '../runners/types'
 import { faces, rotatePoint, type Point } from './voxelGeometry'
+import { directionalLight, cornerOcclusion, paintOcclusion, litColor } from './voxelLighting'
 
 // Clean, complete artwork: no axes, selection, cuts or editor overlays.
 // A fixed camera makes library previews and exports comparable across sessions.
@@ -25,27 +26,30 @@ export function projectImage(colors: number[], mode: SpaceMode, thumbnail = fals
     const view = { yaw: -.65, pitch: .45, zoom: 1 }
     const scale = canvas.width / ((side + 2) * 1.8)
     const get = (x: number, y: number, z: number) => Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) > radius ? 0 : colors[(z + radius) * side * side + (radius - y) * side + x + radius]
-    const visible: { corners: Point[]; color: number; light: number; depth: number }[] = []
+    const visible: { corners: Point[]; color: number; light: number; ao: number[]; depth: number }[] = []
     for (let z = -radius; z <= radius; z++) for (let y = -radius; y <= radius; y++) for (let x = -radius; x <= radius; x++) {
       const color = get(x, y, z)
       if (!color) continue
       for (const face of faces) {
         const [nx, ny, nz] = face.normal
         if (get(x + nx, y + ny, z + nz) || rotatePoint(face.normal, view)[2] <= .001) continue
-        visible.push({ color, light: face.light, depth: rotatePoint([x + nx / 2, y + ny / 2, z + nz / 2], view)[2], corners: face.corners.map(([a, b, c]) => [x + a, y + b, z + c]) })
+        visible.push({ color, light: directionalLight(face.normal), ao: cornerOcclusion([x, y, z], face.normal, face.corners, get), depth: rotatePoint([x + nx / 2, y + ny / 2, z + nz / 2], view)[2], corners: face.corners.map(([a, b, c]) => [x + a, y + b, z + c]) })
       }
     }
     for (const face of visible.sort((a, b) => a.depth - b.depth)) {
-      const hex = palette[face.color].slice(1)
-      ctx.fillStyle = `rgb(${[0, 2, 4].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * face.light)).join(',')})`
+      ctx.fillStyle = litColor(palette[face.color], face.light)
       ctx.beginPath()
-      face.corners.forEach((point, i) => {
+      const points = face.corners.map(point => {
         const [x, y] = rotatePoint(point, view)
-        if (i === 0) ctx.moveTo(canvas.width / 2 + x * scale, canvas.height / 2 - y * scale)
-        else ctx.lineTo(canvas.width / 2 + x * scale, canvas.height / 2 - y * scale)
+        return [canvas.width / 2 + x * scale, canvas.height / 2 - y * scale]
+      })
+      points.forEach(([x, y], i) => {
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
       })
       ctx.closePath(); ctx.fill()
       ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = .5; ctx.stroke()
+      paintOcclusion(ctx, points, face.ao)
     }
   }
   if (thumbnail) {

@@ -334,6 +334,13 @@ export function WorkspaceMenuBar({
             ) : (
               <>
                 <button
+                  role="menuitemcheckbox"
+                  aria-checked={voxelControls.lighting}
+                  onClick={() => handleAction(() => voxelControls.setLighting(!voxelControls.lighting))}
+                >
+                  <span>{voxelControls.lighting ? '✓ ' : '  '}光影</span>
+                </button>
+                <button
                   role="menuitem"
                   aria-checked={voxelControls.axes}
                   onClick={() => handleAction(() => voxelControls.setAxes(!voxelControls.axes))}

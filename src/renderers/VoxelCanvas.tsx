@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { palette, colorNames } from '../engine/levels'
 
 import { faces, rotatePoint, type Point } from './voxelGeometry'
+import { directionalLight, cornerOcclusion, paintOcclusion, litColor } from './voxelLighting'
 
 export function VoxelCanvas({ colors, radius, controls, label = '三维体素画布' }: { colors: number[]; radius: number; controls: VoxelControls; label?: string; showControls?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null)
-  const { view, setView, axes, cuts, setCuts, showCutHandles } = controls
+  const { view, setView, axes, cuts, setCuts, showCutHandles, lighting } = controls
   const cutDrag = useRef<{ axis: number; x: number; y: number; value: number; dx: number; dy: number } | null>(null)
   const [size, setSize] = useState({ width: 1, height: 1 })
   const drag = useRef<{ x: number; y: number; id: number } | null>(null)
@@ -14,18 +15,18 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
   const surface = useMemo(() => {
     const side = radius * 2 + 1
     const get = (x: number, y: number, z: number) => x > cuts[0] || y > cuts[1] || z > cuts[2] || Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) > radius ? 0 : colors[(z + radius) * side * side + (radius - y) * side + x + radius] ?? 0
-    const result: { voxel: Point; center: Point; normal: Point; corners: Point[]; color: number; light: number }[] = []
+    const result: { voxel: Point; center: Point; normal: Point; corners: Point[]; color: number; light: number; ao: number[] }[] = []
     for (let z = -radius; z <= radius; z++) for (let y = -radius; y <= radius; y++) for (let x = -radius; x <= radius; x++) {
       const color = get(x, y, z)
       if (!color) continue
       for (const face of faces) {
         const [nx, ny, nz] = face.normal
         if (get(x + nx, y + ny, z + nz)) continue
-        result.push({ voxel: [x,y,z], center: [x + nx / 2, y + ny / 2, z + nz / 2], normal: face.normal, corners: face.corners.map(([a,b,c]) => [x+a,y+b,z+c]), color, light: face.light })
+        result.push({ voxel: [x,y,z], center: [x + nx / 2, y + ny / 2, z + nz / 2], normal: face.normal, corners: face.corners.map(([a,b,c]) => [x+a,y+b,z+c]), color, light: lighting ? directionalLight(face.normal) : face.light, ao: lighting ? cornerOcclusion([x, y, z], face.normal, face.corners, get) : [] })
       }
     }
     return result
-  }, [colors, radius, cuts])
+  }, [colors, radius, cuts, lighting])
   const hover = useMemo(() => {
     if (!pointer || pointer.view !== view || pointer.cuts !== cuts || pointer.colors !== colors || pointer.size !== size) return null
     const scale = Math.min(size.width,size.height)/((radius*2+3)*1.8)*view.zoom
@@ -83,12 +84,11 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
     ctx.globalAlpha = 1
     const visible = surface.filter(f => rotate(f.normal)[2] > 0.001).map(f => ({ ...f, depth: rotate(f.center)[2] })).sort((a,b) => a.depth - b.depth)
     for (const face of visible) {
-      const hex = palette[face.color].slice(1)
-      const rgb = [0,2,4].map(i => Math.round(parseInt(hex.slice(i,i+2),16) * face.light))
-      ctx.fillStyle = `rgb(${rgb.join(',')})`; ctx.strokeStyle = '#08131c66'; ctx.lineWidth = .6
+      ctx.fillStyle = litColor(palette[face.color], face.light); ctx.strokeStyle = '#08131c66'; ctx.lineWidth = .6
       ctx.beginPath()
-      face.corners.forEach((p,i) => { const [x,y] = project(p); if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y) })
-      ctx.closePath(); ctx.fill(); ctx.stroke()
+      const points = face.corners.map(project)
+      points.forEach(([x,y],i) => { if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y) })
+      ctx.closePath(); ctx.fill(); paintOcclusion(ctx, points, face.ao); ctx.stroke()
       if (hover && face.voxel.every((v,i) => v === hover.voxel[i])) {
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.stroke()
       }
@@ -182,7 +182,7 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
   const clipped = cuts.some(value => value < radius)
   const side = radius*2+1
   const shown = colors.filter((color,index) => color && index%side-radius<=cuts[0] && radius-Math.floor(index/side)%side<=cuts[1] && Math.floor(index/(side*side))-radius<=cuts[2]).length
-  return <div className="voxel-viewport" data-cuts={cuts.join(',')} data-visible-voxels={shown}>
+  return <div className="voxel-viewport" data-lighting={lighting} data-cuts={cuts.join(',')} data-visible-voxels={shown}>
     <canvas ref={canvas} aria-label={label} tabIndex={0} data-view={`${view.yaw},${view.pitch},${view.zoom}`} data-voxels={colors.filter(Boolean).length}
       onPointerDown={e => { setPointer(null); drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId }; e.currentTarget.setPointerCapture(e.pointerId) }}
       onPointerMove={e => { const last = drag.current; if (!last) { const box=e.currentTarget.getBoundingClientRect(); setPointer({ x:e.clientX-box.left,y:e.clientY-box.top,view,cuts,colors,size }); return } if (last.id !== e.pointerId) return; const dx = e.clientX-last.x, dy = e.clientY-last.y; drag.current = { x:e.clientX,y:e.clientY,id:e.pointerId }; setView(v => ({ ...v,topDown:false,yaw:v.yaw+dx*.008,pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,v.pitch+dy*.008)) })) }}
