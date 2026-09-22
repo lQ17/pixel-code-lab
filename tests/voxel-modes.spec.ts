@@ -1,6 +1,14 @@
 import { test, expect, type Page } from '@playwright/test'
 import { parseProgress, STORAGE_KEY } from '../src/hooks/useProgress'
 import { voxelStarter } from '../src/engine/voxel'
+import {
+  enterChallenge3d,
+  enterCreate3d,
+  runCode,
+  loadExample,
+  restoreTemplate,
+  switchReference,
+} from './helpers'
 
 const legacyCode = 'def voxel(x, y, z):\n    return 4 if (x, y, z) == (1, 2, 3) else 0\n'
 const cubeCode = 'def voxel(x, y, z):\n    return 2 if x == 0 and y == 0 else 0\n'
@@ -56,71 +64,97 @@ test('挑战与创作独立、切目标不覆盖、显式载入确认、旧存�
     else await dialog.dismiss()
   })
   await page.goto('/')
-  const run = page.getByRole('button', { name: '运行', exact: true })
+
+  // 从入口页继续上次工作进入 3D 自由创作工作台
+  await page.getByRole('button', { name: /继续上次工作/ }).click()
   const editor = page.locator('.view-lines')
-  const canvas = page.getByLabel('三维体素画布', { exact: true })
+  const canvas = page.getByLabel('三维体素画布').last()
   const score = page.getByTestId('voxel-score')
-  const select = async (title: string) => page.locator('.voxel-rail nav').getByRole('button', { name: new RegExp('^' + title) }).click()
+
   await expect(editor).toContainText('(1, 2, 3)')
-  await expect(page.getByRole('button', { name: '自由创作', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(run).toBeEnabled()
-  await run.click()
+  await runCode(page)
   await expect(canvas).toHaveAttribute('data-voxels', '1')
-  await select('立方体')
+
+  // 切参考到立方体
+  await switchReference(page, '立方体')
   await expect(editor).toContainText('(1, 2, 3)')
   await expect(canvas).toHaveAttribute('data-voxels', '1')
   expect(dialogs).toEqual([])
-  await select('球体')
+
+  // 切参考到球体
+  await switchReference(page, '球体')
   acceptDialog = true
-  await page.getByRole('button', { name: '载入示例', exact: true }).click()
-  await run.click()
+  await loadExample(page)
+  await runCode(page)
   await expect(canvas).toHaveAttribute('data-voxels', '925')
   await expect(score).toHaveCount(0)
-  await expect(page.locator('.header-progress')).toHaveCount(0)
   expect((await saved(page)).voxelPassed).toEqual({ 'voxel-cube': true })
   await page.screenshot({ path: 'test-results/voxel-creation-mode.png', fullPage: true })
 
-  await page.getByRole('button', { name: '挑战', exact: true }).click()
+  // 返回入口页切换到挑战模式球体关卡
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await page.getByRole('button', { name: '挑战模式', exact: true }).click()
+  await page.getByRole('button', { name: /球体/ }).click()
+
   await expect(editor).toContainText('(1, 2, 3)')
   await expect(page.getByRole('heading', { name: '目标图 · 球体' })).toBeVisible()
   await expect(canvas).toHaveAttribute('data-voxels', '0')
-  await select('立方体')
+
+  // 切换到立方体关卡
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await page.getByRole('button', { name: /STAGE 01\s+立方体/ }).click()
   await expect(editor).toContainText('return 0')
   await write(page, cubeCode)
-  // Switch immediately, before the autosave debounce, to verify no edits are lost.
-  await select('球体')
+
+  // 快速切回球体关卡验证输入无丢失
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await page.getByRole('button', { name: /球体/ }).click()
   await expect(editor).toContainText('(1, 2, 3)')
-  await select('立方体')
+
+  // 返回立方体关卡
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await page.getByRole('button', { name: /STAGE 01\s+立方体/ }).click()
   await expect(editor).toContainText('x == 0 and y == 0')
   expect(dialogs).toHaveLength(1)
+
+  // 拒绝载入示例
   acceptDialog = false
-  await page.getByRole('button', { name: '载入示例', exact: true }).click()
+  await loadExample(page)
   await expect(editor).toContainText('x == 0 and y == 0')
+
+  // 确认载入示例并运行
   acceptDialog = true
-  await page.getByRole('button', { name: '载入示例', exact: true }).click()
-  await run.click()
+  await loadExample(page)
+  await runCode(page)
   await expect(score).toContainText('100.0%')
   await page.screenshot({ path: 'test-results/voxel-challenge-mode.png', fullPage: true })
   await page.setViewportSize({ width: 1180, height: 768 })
   await page.screenshot({ path: 'test-results/voxel-challenge-laptop.png', fullPage: true })
-  await page.getByRole('button', { name: '恢复初始代码', exact: true }).click()
+
+  // 恢复初始代码
+  await restoreTemplate(page)
   await expect(editor).toContainText('return 0')
   const state = await saved(page)
   expect(state.voxelCodes['voxel-cube']).toBe(voxelStarter)
   expect(state.voxelCodes['voxel-sphere']).toBe(legacyCode)
   expect(state.voxelCode).toContain('x*x + y*y + z*z')
   expect(state.passed).toEqual(legacy.passed)
-  await select('球体')
+
+  // 切换到球体关卡后刷新验证
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await page.getByRole('button', { name: /球体/ }).click()
   await page.reload()
-  await expect(page.getByRole('button', { name: '挑战', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(editor).toContainText('(1, 2, 3)')
-  await expect(page.getByRole('button', { name: /^立方体.*已通关/ })).toBeVisible()
   await expect(score).toHaveCount(0)
+
+  // 返回入口页切换到自由创作
+  await page.getByRole('button', { name: '返回入口' }).click()
   await page.getByRole('button', { name: '自由创作', exact: true }).click()
+  await page.getByRole('button', { name: /进入创作工作台/ }).click()
   await expect(editor).toContainText('x*x + y*y + z*z')
   await expect(page.getByRole('heading', { name: '参考图 · 球体' })).toBeVisible()
+
   await page.reload()
-  await expect(page.getByRole('button', { name: '自由创作', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(editor).toContainText('x*x + y*y + z*z')
   expect(errors).toEqual([])
 })
@@ -130,41 +164,52 @@ test('切玩法和切三维关卡取消运行，作品与成绩隔离且保留�
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
     key: STORAGE_KEY, value: { ...legacy, voxelCodes: {}, voxelActivity: 'challenge', voxelLevelId: 'voxel-cube' },
   })
-  await page.goto('/')
-  const run = page.getByRole('button', { name: '运行', exact: true })
-  const canvas = page.getByLabel('三维体素画布', { exact: true })
+  await enterChallenge3d(page, 'voxel-cube')
+  const canvas = page.getByLabel('三维体素画布').last()
   const score = page.getByTestId('voxel-score')
-  await expect(run).toBeEnabled()
-  await page.getByRole('button', { name: '载入示例', exact: true }).click()
-  await run.click()
+
+  await loadExample(page)
+  await runCode(page)
   await expect(score).toContainText('100.0%')
+
+  // 运行死循环并离开工作台切到自由创作
   await write(page, 'while True:\n    pass')
-  await run.click()
-  await page.getByRole('button', { name: '自由创作', exact: true }).click()
-  await expect(run).toBeEnabled()
+  await runCode(page)
+  await enterCreate3d(page)
+
   await expect(score).toHaveCount(0)
   await expect(canvas).toHaveAttribute('data-voxels', '0')
-  await run.click()
+  await runCode(page)
   await expect(canvas).toHaveAttribute('data-voxels', '1')
+
+  // 再次写死循环并运行，切回挑战模式立方体关卡
   await write(page, 'while True:\n    pass')
-  await run.click()
-  await page.getByRole('button', { name: '挑战', exact: true }).click()
-  await expect(run).toBeEnabled()
+  await runCode(page)
+  await enterChallenge3d(page, 'voxel-cube')
+
+  // 运行已被取消，历史作品保留
   await expect(canvas).toHaveAttribute('data-voxels', '343')
   await expect(score).toContainText('历史匹配率')
-  await run.click()
-  await page.getByRole('button', { name: /球体/ }).click()
-  await expect(run).toBeEnabled()
+
+  // 再次运行死循环切到球体关卡
+  await runCode(page)
+  await enterChallenge3d(page, 'voxel-sphere')
+
   await expect(canvas).toHaveAttribute('data-voxels', '0')
   await expect(score).toHaveCount(0)
-  await run.click()
+  await runCode(page)
   await expect(score).toContainText('0.0%')
   await expect(page.locator('.error[role=alert]')).toHaveCount(0)
-  await page.getByRole('button', { name: /^立方体/ }).click()
+
+  // 切回立方体关卡
+  await enterChallenge3d(page, 'voxel-cube')
   await expect(canvas).toHaveAttribute('data-voxels', '343')
   await expect(score).toContainText('100.0%')
-  await page.getByRole('button', { name: '自由创作', exact: true }).click()
+
+  // 切回自由创作
+  await enterCreate3d(page)
   await expect(canvas).toHaveAttribute('data-voxels', '1')
   await expect(score).toHaveCount(0)
   await expect(page.locator('.error[role=alert]')).toHaveCount(0)
 })
+

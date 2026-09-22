@@ -93,44 +93,80 @@ test('新增四关运行通关、七关进度、代码隔离、创作参考 ID �
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))
   await page.goto('/')
-  const nav = page.getByRole('navigation', { name: '三维关卡', exact: true })
-  const run = page.getByRole('button', { name: '运行', exact: true })
-  const score = page.getByTestId('voxel-score')
-  const canvas = page.getByLabel('三维体素画布', { exact: true })
-  await expect(nav.getByRole('button')).toHaveCount(7)
+
+  // 入口页上显示 7 关卡片与通关统计
+  const cards = page.locator('.start-cards-grid button.start-card')
+  await expect(cards).toHaveCount(7)
   await expect(page.getByLabel('已通关 0 / 7 关')).toBeVisible()
+
+  // 逐一通关后四关
   for (const id of ['voxel-hollow-cube', 'voxel-cylinder', 'voxel-pyramid', 'voxel-house'] as const) {
-    await nav.getByRole('button', { name: new RegExp('^' + getVoxelLevel(id).title) }).click()
+    await page.getByRole('button', { name: new RegExp(getVoxelLevel(id).title) }).click()
+    await expect(page.locator('.editor-zone')).toBeVisible()
     await expect(page.locator('.view-lines')).toContainText('return 0')
+    const score = page.getByTestId('voxel-score')
+    const canvas = page.getByLabel('三维体素画布').last()
     await expect(score).toHaveCount(0)
     await expect(canvas).toHaveAttribute('data-voxels', '0')
-    await page.getByRole('button', { name: '载入示例', exact: true }).click()
-    await expect(run).toBeEnabled()
-    await run.click()
+    
+    // 打开编辑菜单载入示例并运行
+    await page.getByRole('button', { name: /^编辑/ }).click()
+    await page.getByRole('menuitem', { name: '载入示例' }).click()
+    await page.getByRole('button', { name: /^运行/ }).click()
+    await page.getByRole('menuitem', { name: /运行代码/ }).click()
+
     await expect(score).toContainText('100.0%')
     await expect(canvas).toHaveAttribute('data-voxels', String(counts[id]))
     await expect(page.getByRole('heading', { name: '目标图 · ' + getVoxelLevel(id).title })).toBeVisible()
+
+    // 返回入口页
+    await page.getByRole('button', { name: '返回入口' }).click()
+    await expect(page.getByRole('heading', { name: 'Pixel Code Lab' })).toBeVisible()
   }
+
   await expect(page.getByLabel('已通关 4 / 7 关')).toBeVisible()
-  await nav.getByRole('button', { name: /^空心立方体/ }).click()
+
+  // 再次进入空心立方体关卡验证代码被隔离保留
+  await page.getByRole('button', { name: new RegExp(getVoxelLevel('voxel-hollow-cube').title) }).click()
+  const score = page.getByTestId('voxel-score')
   await expect(score).toContainText('100.0%')
   await expect(page.locator('.view-lines')).toContainText('max(abs(x), abs(y), abs(z)) == 4')
+
+  // 返回入口页切换到自由创作
+  await page.getByRole('button', { name: '返回入口' }).click()
   await page.getByRole('button', { name: '自由创作', exact: true }).click()
-  await page.getByRole('navigation', { name: '三维参考模型' }).getByRole('button', { name: '简单房屋', exact: true }).click()
+  await page.getByRole('button', { name: /进入创作工作台/ }).click()
+
+  // 切换参考模型到简单房屋
+  await page.getByRole('button', { name: /^参考/ }).click()
+  await page.getByRole('menuitemradio', { name: /简单房屋/ }).click()
+
   await expect(page.locator('.view-lines')).toContainText('return 0')
-  await page.getByRole('button', { name: '载入示例', exact: true }).click()
-  await run.click()
+  await page.getByRole('button', { name: /^编辑/ }).click()
+  await page.getByRole('menuitem', { name: '载入示例' }).click()
+  await page.getByRole('button', { name: /^运行/ }).click()
+  await page.getByRole('menuitem', { name: /运行代码/ }).click()
+
+  const canvas = page.getByLabel('三维体素画布').last()
   await expect(canvas).toHaveAttribute('data-voxels', '470')
   await expect(score).toHaveCount(0)
-  await page.getByRole('navigation', { name: '三维参考模型' }).getByRole('button', { name: '圆柱', exact: true }).click()
+
+  // 切换参考模型到圆柱
+  await page.getByRole('button', { name: /^参考/ }).click()
+  await page.getByRole('menuitemradio', { name: /圆柱/ }).click()
   await expect(canvas).toHaveAttribute('data-voxels', '470')
+
+  // 刷新后验证保留在自由创作与圆柱参考
   await page.reload()
   await expect(page.getByRole('heading', { name: '参考图 · 圆柱' })).toBeVisible()
   await expect(page.locator('.view-lines')).toContainText('return 1')
   await expect(canvas).toHaveAttribute('data-voxels', '0')
-  await page.getByRole('button', { name: '挑战', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '目标图 · 空心立方体' })).toBeVisible()
+
+  // 返回入口页查看挑战模式下的通关状态
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await page.getByRole('button', { name: '挑战模式', exact: true }).click()
   await expect(page.getByLabel('已通关 4 / 7 关')).toBeVisible()
+
   const state = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), STORAGE_KEY)
   expect(state.voxelCodes['voxel-house']).toBe(getVoxelLevel('voxel-house').exampleCode)
   expect(state.voxelCodes['voxel-cylinder']).toBe(getVoxelLevel('voxel-cylinder').exampleCode)

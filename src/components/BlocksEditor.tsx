@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Blockly, theme, toolbox } from '../blocks/blockly'
 import { compileBlocks, maxBlocks, parseBlocks, type BlocksDocument } from '../blocks/model'
 
@@ -7,9 +7,16 @@ function fitWorkspace(ws: Blockly.WorkspaceSvg) {
   if (ws.scale > .85) { ws.setScale(.85); ws.scrollCenter() }
 }
 
-export default function BlocksEditor({ document, onChange, onError, errorBlock }: { document: BlocksDocument; onChange: (document: BlocksDocument) => void; errorBlock?: string; onError: (message: string) => void }) {
+export interface BlocksEditorHandle {
+  zoomToFit: () => void
+}
+
+export const BlocksEditor = forwardRef<BlocksEditorHandle, { document: BlocksDocument; onChange: (document: BlocksDocument) => void; errorBlock?: string; onError: (message: string) => void }>(function BlocksEditor({ document, onChange, onError, errorBlock }, ref) {
   const container = useRef<HTMLDivElement>(null)
   const workspace = useRef<Blockly.WorkspaceSvg | null>(null)
+  useImperativeHandle(ref, () => ({
+    zoomToFit: () => { if (workspace.current) fitWorkspace(workspace.current) }
+  }))
   const latest = useRef({ document, onChange, onError })
   const [loadError, setLoadError] = useState('')
   useEffect(() => { latest.current = { document, onChange, onError } }, [document, onChange, onError])
@@ -53,4 +60,6 @@ export default function BlocksEditor({ document, onChange, onError, errorBlock }
     {(loadError || issues.length > 0) && <p className="blocks-warning" role="alert">{loadError || issues[0].message}</p>}
     <div className="blocks-hint"><span>选中后按 Delete 删除；滚轮缩放。</span><button onClick={() => workspace.current && fitWorkspace(workspace.current)}>适应积木</button></div>
   </div>
-}
+})
+
+export default BlocksEditor

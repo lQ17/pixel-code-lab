@@ -8,19 +8,32 @@ import { blocksExample } from '../src/blocks/examples'
 import { pixelReference, pixelReferenceIds } from '../src/engine/pixelCreation'
 import { exportProject, importProject, type Project } from '../src/engine/projects'
 import { parseProgress, STORAGE_KEY } from '../src/hooks/useProgress'
+import {
+  runCode,
+  loadExample,
+  openProjectLibrary,
+  switchEditorKind,
+  toggleBlocksCode,
+  fitBlocks,
+  copyToPythonProject,
+  clickExportPng,
+  expectExportPngDisabled,
+  expectRunDisabled,
+} from './helpers'
 
 const base = { schemaVersion: 1, codes: { square: 'challenge unchanged' }, passed: { circle: true }, levelId: 'square', introSeen: true, mode: '2d', pixelActivity: 'create', pixelCode: 'def pixel(x, y):\n    return 5\n', pixelEditor: 'blocks', voxelCode: '3d unchanged' }
 const makeDraft = (document: BlocksDocument) => ({ document, name: '积木作品', referenceId: 'pixel-cross', projectId: null })
 const savedBlock: Project = { id: 'blocks-saved', name: '已有积木', code: compileBlocks(blocksExample('pixel-cross')).code, referenceId: 'pixel-cross', editor: 'blocks', blocks: blocksExample('pixel-cross'), createdAt: '2026-09-22T00:00:00.000Z', updatedAt: '2026-09-22T00:00:00.000Z' }
+
 async function seed(page: Page, patch: Record<string, unknown> = {}) {
   await page.addInitScript(({ value, key }) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(value)) }, { value: { ...base, ...patch }, key: STORAGE_KEY })
-  await page.goto('/')
+  await page.goto('/#/work/2d/create')
+  await expect(page.locator('.editor-zone')).toBeVisible()
 }
 async function state(page: Page) {
   await expect(page.getByTestId('storage-status')).toHaveAttribute('data-save-state', 'saved')
   return page.evaluate(key => JSON.parse(localStorage.getItem(key)!), STORAGE_KEY)
 }
-const runButton = (page: Page) => page.getByRole('button', { name: '运行', exact: true })
 const library = (page: Page) => page.getByRole('dialog', { name: '本地作品库' })
 const documentOf = (body: BlockNode): BlocksDocument => ({ version: 1, workspace: { blocks: { languageVersion: 0, blocks: [{ type: 'pixel_entry', id: 'root', inputs: { BODY: { block: body } } }] } } })
 
@@ -87,15 +100,15 @@ test('积木示例运行、存档刷新、Python 草稿隔离、作品预览与�
   await seed(page)
   await expect(page.locator('.blocklySvg').first()).toBeVisible()
   page.once('dialog', d => d.accept())
-  await page.getByRole('button', { name: '载入示例', exact: true }).click()
+  await loadExample(page)
   await expect(page.locator('.blocks-warning')).toHaveCount(0)
-  await page.locator('.blocks-python summary').click()
-  await expect(page.getByLabel('积木生成的 Python')).toContainText('abs(x)')
-  await expect(runButton(page)).toBeEnabled(); await runButton(page).click()
-  await expect(page.getByRole('button', { name: '导出 PNG', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: '适应积木' }).click()
+  await toggleBlocksCode(page)
+  await expect(page.getByLabel('积木生成的 Python', { exact: true })).toContainText('abs(x)')
+  await runCode(page)
+  await clickExportPng(page)
+  await fitBlocks(page)
   await page.screenshot({ path: 'test-results/blocks-1440.png' })
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await openProjectLibrary(page)
   await page.getByLabel('当前作品名称').fill('十字积木')
   await library(page).getByRole('button', { name: '保存作品', exact: true }).click()
   let saved = await state(page)
@@ -109,28 +122,28 @@ test('积木示例运行、存档刷新、Python 草稿隔离、作品预览与�
   await expect(library(page)).toContainText('作品已导入列表')
   expect((await state(page)).pixelProjects).toHaveLength(2)
   await page.getByRole('button', { name: '关闭作品库' }).click()
-  await page.getByRole('button', { name: '复制为 Python 作品', exact: true }).click()
+  await copyToPythonProject(page)
   saved = await state(page)
   expect(saved.pixelProjects).toHaveLength(3)
   expect(saved.pixelProjects[2].editor).toBeUndefined()
   expect(saved.pixelProjects[2].code).toBe(saved.pixelProjects[0].code)
   expect(saved.pixelCode).toBe(base.pixelCode)
-  await page.getByRole('group', { name: '编辑方式' }).getByRole('button', { name: 'Python', exact: true }).click()
+  await switchEditorKind(page, 'Python 代码')
   await expect(page.locator('.view-lines')).toContainText('return 5')
-  await page.getByRole('group', { name: '编辑方式' }).getByRole('button', { name: '积木', exact: true }).click()
+  await switchEditorKind(page, '图形积木')
   await page.reload()
   await expect(page.locator('.blocklySvg').first()).toBeVisible()
   await expect(page.locator('.blocks-warning')).toHaveCount(0)
   expect((await state(page)).pixelBlocks.document).toEqual(saved.pixelBlocks.document)
   await page.setViewportSize({ width: 1180, height: 768 })
-  await page.getByRole('button', { name: '适应积木' }).click()
+  await fitBlocks(page)
   await page.screenshot({ path: 'test-results/blocks-1180.png' })
   expect(errors).toEqual([])
 })
 
 test('切换作品同时保护积木和手写草稿，取消与失败不替换', async ({ page }) => {
   await seed(page, { pixelEditor: 'python', pixelProjects: [savedBlock], pixelBlocks: makeDraft(blocksExample('pixel-tree')) })
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await openProjectLibrary(page)
   page.once('dialog', d => d.dismiss())
   await page.getByRole('button', { name: '打开 已有积木', exact: true }).click()
   expect((await state(page)).pixelEditor).toBe('python')
@@ -144,9 +157,8 @@ test('切换作品同时保护积木和手写草稿，取消与失败不替换',
   expect(saved.pixelBlocks.projectId).toBe(savedBlock.id)
   await page.getByRole('button', { name: '关闭作品库' }).click()
   await expect(page.locator('.blocklySvg').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: '导出 PNG', exact: true })).toBeDisabled()
+  await expectExportPngDisabled(page)
 })
-
 
 test('真实拖拽连接、颜色下拉、删除输入、撤销与刷新恢复', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -164,7 +176,7 @@ test('真实拖拽连接、颜色下拉、删除输入、撤销与刷新恢复',
   }
   await drag('.blocklyFlyout .pixel_return', geometry.x + 20 * geometry.scale, geometry.y + 30 * geometry.scale)
   await expect(page.locator('.blocks-warning')).toContainText('补齐')
-  await expect(runButton(page)).toBeDisabled()
+  await expectRunDisabled(page)
   await category.click()
   const ret = (await page.locator('.blocklyWorkspace .pixel_return>path.blocklyPath').last().boundingBox())!
   await drag('.blocklyFlyout .pixel_color', ret.x + ret.width - 8 * geometry.scale, ret.y)
@@ -172,9 +184,9 @@ test('真实拖拽连接、颜色下拉、删除输入、撤销与刷新恢复',
   const field = page.locator('.blocklyWorkspace .pixel_color .blocklyDropdownText').last()
   await field.click()
   await page.getByRole('option', { name: /7.*白/ }).click()
-  await expect(runButton(page)).toBeEnabled(); await runButton(page).click()
-  await expect(page.getByRole('button', { name: '导出 PNG', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await runCode(page)
+  await clickExportPng(page)
+  await openProjectLibrary(page)
   await page.getByLabel('当前作品名称').fill('拖拽白色')
   await library(page).getByRole('button', { name: '保存作品', exact: true }).click()
   expect((await state(page)).pixelProjects[0].preview).toBe('7'.repeat(441))
@@ -196,22 +208,22 @@ test('积木运行错误保留历史且定位生成代码，配额失败不切�
   const bad = documentOf({ type: 'pixel_return', id: 'error-return', inputs: { COLOR: { block: { type: 'pixel_math', id: 'mod', fields: { OP: '%' }, inputs: { A: { block: { type: 'pixel_integer', id: 'a', fields: { NUM: 1 } } }, B: { block: { type: 'pixel_integer', id: 'b', fields: { NUM: 2 } } } } } } } })
   await seed(page, { pixelBlocks: makeDraft(bad) })
   await expect(page.locator('.blocklySvg').first()).toBeVisible()
-  await expect(runButton(page)).toBeEnabled(); await runButton(page).click()
-  await expect(page.getByRole('button', { name: '导出 PNG', exact: true })).toBeEnabled()
+  await runCode(page)
+  await clickExportPng(page)
   await page.locator('[data-id="b"] .blocklyText').last().click()
   await page.locator('.blocklyHtmlInput').fill('0')
   await page.locator('.blocklyHtmlInput').press('Enter')
-  await runButton(page).click()
+  await runCode(page)
   await expect(page.locator('.error[role=alert]')).toContainText('ZeroDivisionError')
   await expect(page.locator('.error[role=alert]')).toContainText('第 2 行')
-  await expect(page.getByRole('button', { name: '导出 PNG', exact: true })).toBeDisabled()
+  await expectExportPngDisabled(page)
   const before = await state(page)
   await page.evaluate(() => {
     const original = Storage.prototype.setItem
     Object.assign(window, { restoreStorage: () => { Storage.prototype.setItem = original } })
     Storage.prototype.setItem = function(key, value) { if (key === 'pixel-code-lab.progress') throw new DOMException('quota', 'QuotaExceededError'); original.call(this, key, value) }
   })
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await openProjectLibrary(page)
   page.once('dialog', d => d.accept())
   await page.getByRole('button', { name: '新建草稿', exact: true }).click()
   await expect(library(page).getByRole('alert')).toContainText('作品未保存')
@@ -223,20 +235,18 @@ test('积木运行错误保留历史且定位生成代码，配额失败不切�
   expect(saved.pixelProjects[0].preview).toBeUndefined()
 })
 
-
 test('切换编辑方式取消旧运行并保留独立草稿和成功作品', async ({ page }) => {
   const looping = 'def pixel(x, y):\n    while True:\n        pass\n'
   await seed(page, { pixelCode: looping, pixelBlocks: makeDraft(blocksExample('pixel-cross')) })
-  await expect(runButton(page)).toBeEnabled(); await runButton(page).click()
-  await expect(page.getByRole('button', { name: '导出 PNG', exact: true })).toBeEnabled()
-  await page.getByRole('group', { name: '编辑方式' }).getByRole('button', { name: 'Python', exact: true }).click()
-  await expect(page.getByRole('button', { name: '导出 PNG', exact: true })).toBeDisabled()
-  await expect(runButton(page)).toBeEnabled(); await runButton(page).click()
-  await expect(page.getByRole('button', { name: '停止', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: '积木', exact: true }).click()
-  await expect(runButton(page)).toBeEnabled()
-  await expect(page.getByRole('button', { name: '导出 PNG', exact: true })).toBeEnabled()
+  await runCode(page)
+  await clickExportPng(page)
+  await switchEditorKind(page, 'Python 代码')
+  await expectExportPngDisabled(page)
+  await runCode(page)
+  await switchEditorKind(page, '图形积木')
+  await clickExportPng(page)
   await expect(page.locator('.error[role=alert]')).toHaveCount(0)
   expect((await state(page)).pixelCode).toBe(looping)
   expect(compileBlocks((await state(page)).pixelBlocks.document).code).toBe(compileBlocks(blocksExample('pixel-cross')).code)
 })
+

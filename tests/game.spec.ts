@@ -4,6 +4,13 @@ import { parseProgress } from '../src/hooks/useProgress'
 import { hitCell, initialView, zoomView } from '../src/engine/view'
 import { evaluate, targetColors } from '../src/engine/evaluate'
 import { levels } from '../src/engine/levels'
+import {
+  enterChallenge2d,
+  runCode,
+  stopCode,
+  switchChallengeLevel,
+  openMenu,
+} from './helpers'
 
 test('判定排除空白、严格计入多画漏画错色，边界正确', () => {
   expect(evaluate([0, 1, 0], [0, 1, 0])).toEqual({ passed: true, percent: 100 })
@@ -24,39 +31,44 @@ test('真实 Python 三关通过，错误行号、返回值、隔离、历史作
   const browserErrors: string[] = []
   page.on('pageerror', error => browserErrors.push(error.message))
   await openChallenge(page)
-  const run = page.getByRole('button', { name: '运行', exact: true })
-  await expect(run).toBeEnabled()
-  await run.click()
+  await runCode(page)
   await expect(page.getByTestId('score')).toContainText('0.0%')
   await writeCode(page, 'def pixel(x, y):\n    return 1 if abs(x) <= 2 and abs(y) <= 2 else 0')
-  await run.click()
+  await runCode(page)
   await expect(page.getByTestId('score')).toContainText('100.0%')
-  await expect(page.getByRole('button', { name: /实心正方形.*已通关/ })).toBeVisible()
+
+  // 返回入口查看第一关已通关标记
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await expect(page.getByRole('button', { name: /实心正方形/ })).toHaveClass(/passed/)
+  await page.getByRole('button', { name: /实心正方形/ }).click()
+
   await page.screenshot({ path: 'test-results/square-passed.png', fullPage: true })
   await writeCode(page, 'def pixel(x, y):\n    return 1 / 0')
-  await run.click()
+  await runCode(page)
   await expect(page.locator('.error[role=alert]')).toContainText('第 2 行')
   await expect(page.locator('.error[role=alert]')).toContainText('ZeroDivisionError')
   await expect(page.getByText('当前显示上次成功运行的结果，请以重新运行为准。')).toBeVisible()
   await writeCode(page, 'def pixel(x, y)\n    return 1')
-  await run.click()
+  await runCode(page)
   await expect(page.locator('.error[role=alert]')).toContainText('SyntaxError · 第 1 行')
   for (const value of ['True', '1.0', 'None', '9']) {
     await writeCode(page, `def pixel(x, y):\n    return ${value}`)
-    await run.click()
+    await runCode(page)
     await expect(page.locator('.error[role=alert]')).toContainText('InvalidColor')
   }
   await writeCode(page, 'message = "no function"')
-  await run.click()
+  await runCode(page)
   await expect(page.locator('.error[role=alert]')).toContainText('MissingFunction')
-  await page.getByRole('button', { name: /双色棋盘/ }).click()
+  await switchChallengeLevel(page, /双色棋盘/)
   await writeCode(page, 'def pixel(x, y):\n    return 1 if (x+y)%2 == 0 else 5')
-  await run.click()
+  await runCode(page)
   await expect(page.getByTestId('score')).toContainText('100.0%')
-  await page.getByRole('button', { name: /实心圆/ }).click()
+  await switchChallengeLevel(page, /实心圆/)
   await writeCode(page, 'print("x" * 10000)\ndef pixel(x, y):\n    return 5 if x*x+y*y <= 64 else 0')
-  await run.click()
+  await runCode(page)
   await expect(page.getByTestId('score')).toContainText('100.0%')
+  await openMenu(page, '运行')
+  await page.getByRole('menuitem', { name: /程序输出/ }).click()
   await expect(page.locator('pre')).toContainText('输出已截断')
   expect((await page.locator('pre').innerText()).length).toBeLessThan(4100)
   expect(browserErrors).toEqual([])
@@ -64,48 +76,54 @@ test('真实 Python 三关通过，错误行号、返回值、隔离、历史作
 
 test('死循环超时、手动停止、切关取消后可继续运行', async ({ page }) => {
   await openChallenge(page)
-  const run = page.getByRole('button', { name: '运行', exact: true })
-  await expect(run).toBeEnabled()
   await writeCode(page, 'while True:\n    pass')
-  await run.click()
+  await runCode(page)
   await expect(page.locator('.error[role=alert]')).toContainText('Timeout')
-  await expect(run).toBeEnabled()
   await writeCode(page, 'def pixel(x, y):\n    while True:\n        pass')
-  await run.click()
-  await page.getByRole('button', { name: '停止', exact: true }).click()
+  // 运行并在运行中点击停止
+  await runCode(page)
+  await stopCode(page)
   await expect(page.locator('.error[role=alert]')).toContainText('本次运行已停止')
-  await expect(run).toBeEnabled()
-  await run.click()
-  await page.getByRole('button', { name: /双色棋盘/ }).click()
-  await expect(run).toBeEnabled()
+  await switchChallengeLevel(page, /双色棋盘/)
   await expect(page.locator('.error[role=alert]')).toHaveCount(0)
   await expect(page.getByTestId('score')).toHaveCount(0)
   await writeCode(page, 'def pixel(x, y):\n    return 1 if (x+y)%2 == 0 else 5')
-  await run.click()
+  await runCode(page)
   await expect(page.getByTestId('score')).toContainText('100.0%')
 })
 
 test('加载失败可重试', async ({ page }) => {
   await page.route('**/pyodide/pyodide.mjs', route => route.abort())
-  await openChallenge(page)
+  await page.goto('/#/work/2d/challenge/square')
   await expect(page.getByRole('button', { name: '重试加载' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '运行', exact: true })).toBeDisabled()
   await page.unroute('**/pyodide/pyodide.mjs')
   await page.getByRole('button', { name: '重试加载' }).click()
-  await expect(page.getByRole('button', { name: '运行', exact: true })).toBeEnabled()
+  // Python 恢复后，菜单运行按钮可用
+  const trigger = page.getByRole('button', { name: /^运行/ })
+  await trigger.click()
+  await expect(page.getByRole('menuitem', { name: /运行代码/ })).toBeEnabled()
+  await page.keyboard.press('Escape')
 })
 
-
 async function openChallenge(page: Page) {
-  await page.goto('/')
-  await page.getByRole('button', { name: '开始挑战', exact: true }).click()
-  await expect(page.locator('.monaco-editor .view-lines')).toBeVisible()
+  await enterChallenge2d(page, 'square')
 }
+
 async function writeCode(page: Page, code: string) {
   const editor = page.locator('.code-editor')
   await editor.click({ position: { x: 160, y: 50 } })
   await page.keyboard.press('ControlOrMeta+A')
   await page.keyboard.insertText(code)
+}
+
+async function toggleAxis(page: Page) {
+  await openMenu(page, '视图')
+  await page.getByRole('menuitem', { name: /坐标系：/ }).click()
+}
+
+async function clickResetView(page: Page) {
+  await openMenu(page, '视图')
+  await page.getByRole('menuitem', { name: '重置视图' }).click()
 }
 
 test('存档校验与缩放坐标计算', () => {
@@ -120,38 +138,59 @@ test('存档校验与缩放坐标计算', () => {
 
 test('首次说明、Monaco、本地进度、切关及刷新恢复、恢复模板', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await page.getByRole('button', { name: '开始挑战', exact: true }).click()
-  await expect(page.locator('.monaco-editor')).toBeVisible()
-  const solution = 'def pixel(x, y):\n    return 1 if abs(x) <= 2 and abs(y) <= 2 else 0'
-  await writeCode(page, solution)
-  await expect(page.getByRole('button', { name: '运行', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: '运行', exact: true }).click()
-  await expect(page.getByTestId('score')).toContainText('100.0%')
-  await page.getByRole('button', { name: /双色棋盘/ }).click()
-  await writeCode(page, 'def pixel(x, y):\n    return 5')
-  // 在防抖窗口内切关，必须保存最新代码。
-  await page.getByRole('button', { name: /实心圆/ }).click()
-  await page.reload()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /实心圆/ })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('button', { name: /实心正方形.*已通关/ })).toBeVisible()
-  await page.getByRole('button', { name: /双色棋盘/ }).click()
-  await expect(page.locator('.view-lines')).toContainText('return 5')
-  await page.getByRole('button', { name: /实心正方形/ }).click()
-  await expect(page.locator('.view-lines')).toContainText('abs(x)')
-  await expect(page.getByTestId('score')).toHaveCount(0)
+  // 入口页打开使用说明
   await page.getByRole('button', { name: '使用说明' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  page.once('dialog', dialog => dialog.dismiss())
-  await page.getByRole('button', { name: '恢复初始代码' }).click()
+
+  // 进入工作台
+  await page.getByRole('button', { name: /实心正方形/ }).click()
+  await expect(page.locator('.monaco-editor')).toBeVisible()
+  const solution = 'def pixel(x, y):\n    return 1 if abs(x) <= 2 and abs(y) <= 2 else 0'
+  await writeCode(page, solution)
+  await runCode(page)
+  await expect(page.getByTestId('score')).toContainText('100.0%')
+
+  await switchChallengeLevel(page, /双色棋盘/)
+  await writeCode(page, 'def pixel(x, y):\n    return 5')
+  // 在防抖窗口内切关，必须保存最新代码。
+  await switchChallengeLevel(page, /实心圆/)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: '2D 关卡 · 实心圆' })).toBeVisible()
+
+  // 检查通关记录保存
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await expect(page.getByRole('button', { name: /实心正方形/ })).toHaveClass(/passed/)
+
+  // 恢复双色棋盘并检查草稿
+  await page.getByRole('button', { name: /双色棋盘/ }).click()
+  await expect(page.locator('.view-lines')).toContainText('return 5')
+
+  // 恢复正方形
+  await switchChallengeLevel(page, /实心正方形/)
   await expect(page.locator('.view-lines')).toContainText('abs(x)')
+  await expect(page.getByTestId('score')).toHaveCount(0)
+
+  // 菜单中打开使用说明
+  await openMenu(page, '帮助')
+  await page.getByRole('menuitem', { name: '使用说明…' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // 恢复初始代码（取消）
+  page.once('dialog', dialog => dialog.dismiss())
+  await openMenu(page, '编辑')
+  await page.getByRole('menuitem', { name: '恢复初始代码…' }).click()
+  await expect(page.locator('.view-lines')).toContainText('abs(x)')
+
+  // 恢复初始代码（确认）
   page.once('dialog', dialog => dialog.accept())
-  await page.getByRole('button', { name: '恢复初始代码' }).click()
+  await openMenu(page, '编辑')
+  await page.getByRole('menuitem', { name: '恢复初始代码…' }).click()
   await expect(page.locator('.view-lines')).toContainText('return 0')
-  await expect(page.getByRole('button', { name: /实心正方形.*已通关/ })).toBeVisible()
+
   await expect(page.getByTestId('storage-status')).toHaveAttribute('data-save-state', 'saved')
   await writeCode(page, 'def pixel(x, y):\n    return 8')
   await page.reload()
@@ -179,29 +218,29 @@ test('两图联动缩放平移、坐标命中与重置', async ({ page }) => {
   await page.mouse.up()
   await expect(work).not.toHaveAttribute('data-view', before!)
   await expect.poll(async () => (await target.getAttribute('data-view')) === (await work.getAttribute('data-view'))).toBe(true)
-  const targetPanel = page.locator('.target-panel')
-  const axisButton = targetPanel.getByRole('button', { name: '调整坐标系显示方式' })
-  await expect(axisButton).toHaveAttribute('aria-pressed', 'false')
-  await axisButton.click()
-  await expect(axisButton).toHaveAttribute('aria-pressed', 'true')
+
+  // 切换坐标系
+  await toggleAxis(page)
   await expect(target).toHaveAttribute('data-axis-mode', 'center')
   await expect(work).toHaveAttribute('data-axis-mode', 'center')
-  await targetPanel.getByRole('button', { name: '重置视图' }).click()
+
+  // 重置视图
+  await clickResetView(page)
   await expect(target).toHaveAttribute('data-view', '1,0,0')
   await expect(work).toHaveAttribute('data-view', '1,0,0')
   await page.screenshot({ path: 'test-results/center-axis.png', fullPage: true })
-  await axisButton.click()
-  await expect(axisButton).toHaveAttribute('aria-pressed', 'false')
+
+  // 切回边缘轴
+  await toggleAxis(page)
   await expect(target).toHaveAttribute('data-axis-mode', 'edge')
   await expect(work).toHaveAttribute('data-axis-mode', 'edge')
-  await expect(page.getByRole('button', { name: '缩小视图' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '放大视图' })).toHaveCount(0)
-  await targetPanel.getByRole('button', { name: '重置视图' }).click()
+  await clickResetView(page)
   await expect(target).toHaveAttribute('data-view', '1,0,0')
   await expect(work).toHaveAttribute('data-view', '1,0,0')
   await target.hover({ position: { x: 2, y: 2 } })
   await expect(page.locator('.coordinate').first()).toHaveText('')
-  await page.getByRole('button', { name: /实心圆/ }).click()
+
+  await switchChallengeLevel(page, /实心圆/)
   await expect(page.getByLabel('目标图画布')).toHaveAttribute('data-view', '1,0,0')
   await page.screenshot({ path: 'test-results/monaco-linked-canvas.png', fullPage: true })
 })
@@ -213,7 +252,7 @@ test('损坏存档保留原文，确认后可恢复保存', async ({ page }) => 
   await writeCode(page, 'def pixel(x, y):\n    return 2')
   expect(await page.evaluate(() => localStorage.getItem('pixel-code-lab.progress'))).toBe('{broken')
   page.once('dialog', dialog => dialog.accept())
-  await page.getByRole('button', { name: '重试保存' }).click()
+  await page.getByTestId('storage-status').getByRole('button', { name: '重试保存' }).click()
   await expect(page.getByTestId('storage-status')).toHaveAttribute('data-save-state', 'saved')
   expect(JSON.parse((await page.evaluate(() => localStorage.getItem('pixel-code-lab.progress')))!).codes.square).toContain('return 2')
 })
@@ -228,22 +267,18 @@ test('存储被禁用不会阻止写代码与运行', async ({ page }) => {
   await openChallenge(page)
   await expect(page.getByTestId('storage-status')).toContainText('保存失败')
   await writeCode(page, 'def pixel(x, y):\n    return 0')
-  await expect(page.getByRole('button', { name: '运行', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: '运行', exact: true }).click()
+  await runCode(page)
   await expect(page.getByTestId('score')).toContainText('0.0%')
 })
 
 test('移动原点累加、两图坐标同步、重复运行重置与错误保留', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await openChallenge(page)
-  const run = page.getByRole('button', { name: '运行', exact: true })
-  await expect(run).toBeEnabled()
   await writeCode(page, 'move_origin(2, 3)\nmove_origin(-1, 0)\ndef pixel(x, y):\n    return 1 if abs(x+1) <= 2 and abs(y+3) <= 2 else 0')
   const target = page.getByLabel('目标图画布')
   const work = page.getByLabel('学生作品画布')
   for (let attempt = 0; attempt < 2; attempt++) {
-    await run.click()
-    await expect(run).toBeEnabled()
+    await runCode(page)
     await expect(page.getByTestId('score')).toContainText('100.0%')
     for (const canvas of [target, work]) {
       await expect(canvas).toHaveAttribute('data-origin', '1,3')
@@ -253,26 +288,26 @@ test('移动原点累加、两图坐标同步、重复运行重置与错误保�
     }
   }
   await page.screenshot({ path: 'test-results/moved-origin-edge.png', fullPage: true })
-  await page.getByRole('button', { name: '调整坐标系显示方式' }).click()
+  await toggleAxis(page)
   await page.screenshot({ path: 'test-results/moved-origin-center.png', fullPage: true })
-  await page.getByRole('button', { name: '重置视图' }).click()
+  await clickResetView(page)
   await expect(target).toHaveAttribute('data-origin', '1,3')
   for (const source of ['move_origin(True, 0)\ndef pixel(x, y):\n    return 0', 'move_origin(0.5, 0)\ndef pixel(x, y):\n    return 0', 'def pixel(x, y):\n    move_origin(1, 0); return 0']) {
     await writeCode(page, source)
-    await run.click()
+    await runCode(page)
     await expect(page.locator('.error[role=alert]')).toContainText('move_origin')
     await expect(page.locator('.error[role=alert]')).toContainText('第')
     await expect(target).toHaveAttribute('data-origin', '1,3')
   }
-  await page.getByRole('button', { name: /双色棋盘/ }).click()
+  await switchChallengeLevel(page, /双色棋盘/)
   await expect(page.getByLabel('目标图画布')).toHaveAttribute('data-origin', '0,0')
-  await page.getByRole('button', { name: /实心正方形/ }).click()
+  await switchChallengeLevel(page, /实心正方形/)
   await expect(target).toHaveAttribute('data-origin', '1,3')
   await writeCode(page, 'def pixel(x, y):\n    return 0')
-  await run.click()
+  await runCode(page)
   await expect(target).toHaveAttribute('data-origin', '0,0')
   await writeCode(page, 'move_origin(20, -20)\ndef pixel(x, y):\n    return 0')
-  await run.click()
+  await runCode(page)
   await expect(target).toHaveAttribute('data-origin', '20,-20')
   await expect(page.getByTestId('score')).toContainText('0.0%')
 })

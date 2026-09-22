@@ -6,10 +6,12 @@ export interface VoxelControls {
   view: typeof initial; setView: Dispatch<SetStateAction<typeof initial>>
   axes: boolean; setAxes: Dispatch<SetStateAction<boolean>>
   cuts: Point; setCuts: Dispatch<SetStateAction<Point>>
+  showCutHandles: boolean; setShowCutHandles: Dispatch<SetStateAction<boolean>>
 }
 export function useVoxelControls(radius: number): VoxelControls {
   const [view, setView] = useState(initial)
   const [axes, setAxes] = useState(true)
   const [cuts, setCuts] = useState<Point>([radius,radius,radius])
-  return { view, setView, axes, setAxes, cuts, setCuts }
+  const [showCutHandles, setShowCutHandles] = useState(false)
+  return { view, setView, axes, setAxes, cuts, setCuts, showCutHandles, setShowCutHandles }
 }

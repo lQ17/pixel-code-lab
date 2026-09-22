@@ -3,6 +3,12 @@ import { readFile } from 'node:fs/promises'
 import { exportProject, importProject, maxProjectFileBytes, parseProjectLibrary, projectFilename, type Project } from '../src/engine/projects'
 import { parseProgress, STORAGE_KEY } from '../src/hooks/useProgress'
 import { creationDraft } from '../src/hooks/useProjectLibrary'
+import {
+  runCode,
+  openProjectLibrary,
+  clickSaveProject,
+  switchReference,
+} from './helpers'
 
 const sourceA = 'def voxel(x, y, z):\n    return 4 if (x, y, z) == (1, 2, 3) else 0\n'
 const sourceB = 'def voxel(x, y, z):\n    return 2 if (x, y, z) == (0, 0, 0) else 0\n'
@@ -13,7 +19,8 @@ async function seed(page: Page, value: unknown = legacy) {
   await page.addInitScript(({ key, value }) => {
     if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(value))
   }, { key: STORAGE_KEY, value })
-  await page.goto('/')
+  await page.goto('/#/work/3d/create')
+  await expect(page.locator('.editor-zone')).toBeVisible()
 }
 async function write(page: Page, source: string) {
   await page.evaluate(code => navigator.clipboard.writeText(code), source)
@@ -64,12 +71,10 @@ test('命名保存、更新、另存副本、刷新恢复、运行画面与挑�
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.setViewportSize({ width: 1180, height: 768 })
   await seed(page)
-  const run = page.getByRole('button', { name: '运行', exact: true })
   const canvas = page.getByLabel('三维体素画布', { exact: true })
-  await expect(run).toBeEnabled()
-  await run.click()
+  await runCode(page)
   await expect(canvas).toHaveAttribute('data-voxels', '1')
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await openProjectLibrary(page)
   await page.getByLabel('当前作品名称').fill('我的模型')
   await library(page).getByRole('button', { name: '保存作品', exact: true }).click()
   let state = await saved(page)
@@ -80,14 +85,14 @@ test('命名保存、更新、另存副本、刷新恢复、运行画面与挑�
   await saved(page)
   await page.reload()
   await expect(page.locator('.view-lines')).toContainText('(0, 0, 0)')
-  await expect(page.locator('.project-toolbar')).toContainText('待保存到作品库')
-  await page.getByRole('button', { name: '保存作品', exact: true }).click()
+  await expect(page.locator('.draft-tag')).toContainText('待保存')
+  await clickSaveProject(page)
   state = await saved(page)
   expect(state.voxelProjects).toHaveLength(1)
   expect(state.voxelProjects[0]).toMatchObject({ id: original.id, createdAt: original.createdAt, code: sourceB })
   await write(page, sourceA)
-  await page.getByRole('navigation', { name: '三维参考模型' }).getByRole('button', { name: '圆柱', exact: true }).click()
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await switchReference(page, '圆柱')
+  await openProjectLibrary(page)
   await page.getByLabel('当前作品名称').fill('模型副本')
   await page.getByRole('button', { name: '另存为副本' }).click()
   state = await saved(page)
@@ -101,10 +106,9 @@ test('命名保存、更新、另存副本、刷新恢复、运行画面与挑�
   await expect(page.locator('.view-lines')).toContainText('(0, 0, 0)')
   await expect(page.getByRole('heading', { name: '参考图 · 球体' })).toBeVisible()
   await page.reload()
-  await expect(page.locator('.project-toolbar')).toContainText('我的模型')
+  await expect(page.locator('.workspace-identity h1')).toContainText('我的模型')
   await expect(page.locator('.view-lines')).toContainText('(0, 0, 0)')
-  await expect(run).toBeEnabled()
-  await run.click()
+  await runCode(page)
   await expect(canvas).toHaveAttribute('data-voxels', '1')
   await expect(page.getByTestId('voxel-score')).toHaveCount(0)
   state = await saved(page)
@@ -112,14 +116,18 @@ test('命名保存、更新、另存副本、刷新恢复、运行画面与挑�
   expect(state.passed).toEqual(legacy.passed)
   expect(state.voxelCodes).toEqual(legacy.voxelCodes)
   expect(state.voxelPassed).toEqual(legacy.voxelPassed)
-  await page.getByRole('button', { name: '挑战', exact: true }).click()
-  await expect(page.getByRole('button', { name: '作品库', exact: true })).toHaveCount(0)
+
+  // 切换到挑战模式后作品菜单不存在
+  await page.getByRole('button', { name: '返回入口' }).click()
+  await page.getByRole('button', { name: '挑战模式', exact: true }).click()
+  await page.getByRole('button', { name: /^STAGE 01\s+立方体/ }).click()
+  await expect(page.getByRole('button', { name: /^作品/ })).toHaveCount(0)
 })
 
 test('打开与新建前取消保留原文、确认备份草稿、运行取消不污染新作品', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await seed(page, { ...legacy, voxelProjects: [project] })
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await openProjectLibrary(page)
   page.once('dialog', dialog => dialog.dismiss())
   await page.getByRole('button', { name: '打开 旧作品', exact: true }).click()
   expect((await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), STORAGE_KEY)).voxelCode).toBe(sourceA)
@@ -132,10 +140,8 @@ test('打开与新建前取消保留原文、确认备份草稿、运行取消�
   expect(state.voxelCode).toBe(sourceB)
   await page.getByRole('button', { name: '关闭作品库' }).click()
   await write(page, 'while True:\n    pass')
-  const run = page.getByRole('button', { name: '运行', exact: true })
-  await expect(run).toBeEnabled()
-  await run.click()
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await runCode(page)
+  await openProjectLibrary(page)
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: '新建草稿' }).click()
   state = await saved(page)
@@ -144,9 +150,8 @@ test('打开与新建前取消保留原文、确认备份草稿、运行取消�
   expect(state.voxelProjects.find((item: Project) => item.name === '旧作品（草稿）').code).toContain('while True')
   await page.getByRole('button', { name: '关闭作品库' }).click()
   await expect(page.locator('.view-lines')).toContainText('return 0')
-  await expect(run).toBeEnabled()
-  await run.click()
-  await expect(page.getByTestId('voxel-status')).toContainText('0 个体素')
+  await runCode(page)
+  await expect(page.getByLabel('三维体素画布').last()).toHaveAttribute('data-voxels', '0')
   await expect(page.locator('.error[role=alert]')).toHaveCount(0)
   await page.reload()
   await expect(page.locator('.view-lines')).toContainText('return 0')
@@ -154,7 +159,7 @@ test('打开与新建前取消保留原文、确认备份草稿、运行取消�
 
 test('导出包含当前编辑、导入不替换草稿或执行、重复导入新增副本与无效文件拒绝', async ({ page }) => {
   await seed(page)
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await openProjectLibrary(page)
   await page.getByLabel('当前作品名称').fill('导出模型')
   const downloading = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出当前作品' }).click()
@@ -178,12 +183,12 @@ test('导出包含当前编辑、导入不替换草稿或执行、重复导入�
     expect(await saved(page)).toEqual(state)
   }
   await page.getByRole('button', { name: '关闭作品库' }).click()
-  await expect(page.getByTestId('voxel-status')).toHaveText('等待运行')
+  await expect(page.getByRole('button', { name: /^运行/ })).toBeVisible()
 })
 
 test('配额写入失败不切换、不替换原作品，恢复存储后可重新保存', async ({ page }) => {
   await seed(page, { ...legacy, voxelProjects: [project] })
-  await page.getByRole('button', { name: '作品库', exact: true }).click()
+  await openProjectLibrary(page)
   await page.getByLabel('当前作品名称').fill('空间不足时的作品')
   const before = await saved(page)
   await page.evaluate(() => {
@@ -204,7 +209,7 @@ test('配额写入失败不切换、不替换原作品，恢复存储后可重�
   await page.getByRole('button', { name: '关闭作品库' }).click()
   await expect(page.locator('.view-lines')).toContainText('(1, 2, 3)')
   await page.evaluate(() => (window as unknown as { restoreStorage: () => void }).restoreStorage())
-  await page.getByRole('button', { name: '保存作品', exact: true }).click()
+  await clickSaveProject(page)
   expect((await saved(page)).voxelProjects).toHaveLength(2)
 })
 
@@ -220,10 +225,9 @@ for (const failure of ['malformed-library', 'read-error'] as const) {
         return original.call(this, name)
       }
     }, { key: STORAGE_KEY, raw, failure })
-    await page.goto('/')
-    await page.getByRole('button', { name: '开始挑战', exact: true }).click()
-    await page.getByRole('button', { name: '3D 体素', exact: true }).click()
-    await page.getByRole('button', { name: '作品库', exact: true }).click()
+    await page.goto('/#/work/3d/create')
+    await expect(page.locator('.editor-zone')).toBeVisible()
+    await openProjectLibrary(page)
     await page.getByLabel('当前作品名称').fill('恢复前的草稿')
     await library(page).getByRole('button', { name: '保存作品', exact: true }).click()
     await expect(library(page).getByRole('alert')).toContainText('原存档未覆盖')
@@ -236,3 +240,4 @@ for (const failure of ['malformed-library', 'read-error'] as const) {
     expect(importProject(content, 'recovered').name).toBe('恢复前的草稿')
   })
 }
+

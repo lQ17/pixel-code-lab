@@ -2,11 +2,11 @@ import type { VoxelControls } from '../hooks/useVoxelControls'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { palette, colorNames } from '../engine/levels'
 
-import { initial, faces, rotatePoint, type Point } from './voxelGeometry'
+import { faces, rotatePoint, type Point } from './voxelGeometry'
 
-export function VoxelCanvas({ colors, radius, controls, label = '三维体素画布', showControls = true }: { colors: number[]; radius: number; controls: VoxelControls; label?: string; showControls?: boolean }) {
+export function VoxelCanvas({ colors, radius, controls, label = '三维体素画布' }: { colors: number[]; radius: number; controls: VoxelControls; label?: string; showControls?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null)
-  const { view, setView, axes, setAxes, cuts, setCuts } = controls
+  const { view, setView, axes, cuts, setCuts, showCutHandles } = controls
   const cutDrag = useRef<{ axis: number; x: number; y: number; value: number; dx: number; dy: number } | null>(null)
   const [size, setSize] = useState({ width: 1, height: 1 })
   const drag = useRef<{ x: number; y: number; id: number } | null>(null)
@@ -186,7 +186,7 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
       onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }} onLostPointerCapture={() => { drag.current = null }}
       onKeyDown={e => { if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-'].includes(e.key)) return; e.preventDefault(); setView(v => ({ yaw:v.yaw+(e.key==='ArrowLeft'?-.1:e.key==='ArrowRight'?.1:0),pitch:Math.max(-1.45,Math.min(1.45,v.pitch+(e.key==='ArrowUp'?.1:e.key==='ArrowDown'?-.1:0))),zoom:Math.max(.4,Math.min(4,v.zoom*(e.key==='+'?1.1:e.key==='-'?1/1.1:1))) })) }}/>
     {hover && pointer && <p className="coordinate voxel-coordinate" role="tooltip" style={{left:Math.max(4,Math.min(pointer.x+12,size.width-280)),top:Math.max(4,pointer.y-34)}}><span>坐标:(</span><span className="coordinate-x">x: {hover.voxel[0]}</span><span>, </span><span className="coordinate-y">y: {hover.voxel[1]}</span><span>, </span><span className="coordinate-z">z: {hover.voxel[2]}</span><span>), </span><span className="coordinate-color">颜色: <i className="coordinate-swatch" style={{backgroundColor:palette[hover.color]}}/>{colorNames[hover.color]}</span></p>}
-    {axes && vectors.map(([vx,vy], axis) => {
+    {axes && showCutHandles && vectors.map(([vx,vy], axis) => {
       if (Math.hypot(vx,vy) < .08) return null
       const label = ['X','Y','Z'][axis]
       return <button key={label} className="voxel-cut-handle" role="slider" aria-label={`${label} 轴剖切`} aria-valuemin={-radius-1} aria-valuemax={radius} aria-valuenow={cuts[axis]} aria-valuetext={`保留 ${label} ≤ ${cuts[axis]} 的体素`} title={`拖动剖切 ${label}；方向键逐层调整`}
@@ -196,7 +196,6 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
         onPointerUp={() => { cutDrag.current=null }} onPointerCancel={() => { cutDrag.current=null }} onLostPointerCapture={() => { cutDrag.current=null }}
         onKeyDown={e => { if (!['ArrowLeft','ArrowDown','ArrowRight','ArrowUp','Home','End'].includes(e.key)) return; e.preventDefault(); setCuts(previous => { const next: Point=[...previous]; next[axis]=e.key==='Home'?-radius-1:e.key==='End'?radius:Math.max(-radius-1,Math.min(radius,next[axis]+(['ArrowLeft','ArrowDown'].includes(e.key)?-1:1))); return next }) }}>{label}</button>
     })}
-    {showControls && <div className="voxel-view-actions"><button disabled={!clipped} onClick={() => setCuts([radius,radius,radius])}>恢复完整模型</button><button aria-pressed={axes} onClick={() => setAxes(!axes)}>坐标辅助</button><button onClick={() => setView(initial)}>重置视角</button></div>}
     {clipped && <span className="voxel-cut-status" role="status">剖切预览 · 显示 {shown} / {colors.filter(Boolean).length} 个体素 · X≤{cuts[0]} Y≤{cuts[1]} Z≤{cuts[2]}</span>}
   </div>
 }

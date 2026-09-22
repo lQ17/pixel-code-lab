@@ -6,6 +6,7 @@ import { defaultVoxelId, isVoxelLevelId, legacyVoxelExampleIds, voxelTargetIds, 
 import { maxProjectName, parseProjectLibrary, type Project } from '../engine/projects'
 
 export const STORAGE_KEY = 'pixel-code-lab.progress'
+export type SaveState = 'saved' | 'pending' | 'error'
 export interface Progress {
   schemaVersion: 1
   codes: Record<string, string>
@@ -32,6 +33,7 @@ export interface Progress {
   voxelProjectId?: string | null
   voxelDraftName?: string
 }
+export type ProgressData = Progress
 const empty = (): Progress => ({ schemaVersion: 1, codes: {}, passed: {}, levelId: levels[0].id, introSeen: false, voxelCodes: {} })
 export function parseProgress(raw: string | null): Progress {
   if (raw === null) return empty()
