@@ -3,7 +3,7 @@ import { pixelRadius } from '../engine/pixelCreation'
 import { voxelRadius } from '../engine/voxel'
 import { projectFilename } from '../engine/projects'
 import type { SpaceMode } from '../runners/types'
-import { faces, rotatePoint, type Point } from './voxelGeometry'
+import { faces, initial, rotatePoint, type Point } from './voxelGeometry'
 import { directionalLight, cornerOcclusion, paintOcclusion, litColor } from './voxelLighting'
 
 // Clean, complete artwork: no axes, selection, cuts or editor overlays.
@@ -23,7 +23,7 @@ export function projectImage(colors: number[], mode: SpaceMode, thumbnail = fals
       ctx.fillRect(i % side * cell, Math.floor(i / side) * cell, cell, cell)
     })
   } else {
-    const view = { yaw: -.65, pitch: .45, zoom: 1 }
+    const view = initial
     const scale = canvas.width / ((side + 2) * 1.8)
     const get = (x: number, y: number, z: number) => Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) > radius ? 0 : colors[(z + radius) * side * side + (radius - y) * side + x + radius]
     const visible: { corners: Point[]; color: number; light: number; ao: number[]; depth: number }[] = []

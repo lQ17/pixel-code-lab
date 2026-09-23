@@ -33,26 +33,26 @@ export function voxelBlocksExample(id: VoxelLevelId): BlocksDocument {
       ), ret(color(6)))
       break
     case 'voxel-cylinder':
-      body = when(all(cmp('<=', math('+', square('x'), square('z')), num(16)), cmp('<=', abs('y'), num(4))), ret(color(4)))
+      body = when(all(cmp('<=', math('+', square('x'), square('y')), num(16)), cmp('<=', abs('z'), num(4))), ret(color(4)))
       break
     case 'voxel-sphere':
       body = when(cmp('<=', math('+', math('+', square('x'), square('y')), square('z')), num(36)), ret(color(5)))
       break
     case 'voxel-stairs':
-      body = when(all(cmp('<=', abs('z'), num(2)), bounds('x', -5, 5), cmp('>=', coord('y'), num(-5)), cmp('<=', coord('y'), coord('x'))),
+      body = when(all(cmp('<=', abs('y'), num(2)), bounds('x', -5, 5), cmp('>=', coord('z'), num(-5)), cmp('<=', coord('z'), coord('x'))),
         ret(math('+', math('%', math('+', coord('x'), num(5)), num(6)), num(1))))
       break
     case 'voxel-pyramid':
-      body = when(all(bounds('y', -5, 1), ...['x', 'z'].map(axis => cmp('<=', abs(axis), math('-', num(1), coord('y'))))), ret(color(3)))
+      body = when(all(bounds('z', -5, 1), ...['x', 'y'].map(axis => cmp('<=', abs(axis), math('-', num(1), coord('z'))))), ret(color(3)))
       break
     case 'voxel-house': {
-      body = when(all(bounds('y', 1, 5), cmp('<=', abs('z'), num(4)), cmp('<=', abs('x'), math('-', num(5), coord('y')))), ret(color(1)))
-      const windows = when(all(cmp('==', coord('z'), num(3)), any(
-        all(cmp('<=', abs('x'), num(1)), cmp('<=', coord('y'), num(-2))),
-        all(cmp('==', abs('x'), num(2)), cmp('==', coord('y'), num(-1))),
+      body = when(all(bounds('z', 1, 5), cmp('<=', abs('y'), num(4)), cmp('<=', abs('x'), math('-', num(5), coord('z')))), ret(color(1)))
+      const windows = when(all(cmp('==', coord('y'), num(-3)), any(
+        all(cmp('<=', abs('x'), num(1)), cmp('<=', coord('z'), num(-2))),
+        all(cmp('==', abs('x'), num(2)), cmp('==', coord('z'), num(-1))),
       )), ret(color(5)))
       windows.next = { block: ret(color(3)) }
-      body.next = { block: when(all(cmp('<=', abs('x'), num(3)), cmp('<=', abs('z'), num(3)), bounds('y', -4, 0)), windows) }
+      body.next = { block: when(all(cmp('<=', abs('x'), num(3)), cmp('<=', abs('y'), num(3)), bounds('z', -4, 0)), windows) }
       break
     }
   }

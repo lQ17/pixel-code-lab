@@ -141,17 +141,17 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
         for (const first of [-1,1]) for (const second of [-1,1]) {
           const base: Point = [0,0,0]
           base[others[0]] = first * extent; base[others[1]] = second * extent
-          if (axis !== 1 && base[1] > 0) continue
+          if (axis !== 2 && base[2] > 0) continue
           const [px,py] = project(base)
           const signed = (px-size.width/2)*(-dy)+(py-size.height/2)*dx
           const sign = signed < 0 ? -1 : 1
           candidates.push({ base, distance: Math.abs(signed), nx:-dy*sign, ny:dx*sign })
         }
-        // X/Z stay on the bottom of the world; Y uses the right silhouette edge.
+        // X/Y stay on the bottom of the world; Z uses the right silhouette edge.
         candidates.sort((a,b) => {
           if (Math.abs(b.distance-a.distance) > .01) return b.distance-a.distance
-          if (view.topDown && axis === 2) return a.nx - b.nx
-          return axis === 1 ? b.nx-a.nx : b.ny-a.ny
+          if (view.topDown && axis === 1) return a.nx - b.nx
+          return axis === 2 ? b.nx-a.nx : b.ny-a.ny
         })
         const { base, nx, ny } = candidates[0]
         const at = (value: number) => { const p: Point = [...base]; p[axis] = value; const [x,y] = project(p); return [x+nx*7,y+ny*7] }

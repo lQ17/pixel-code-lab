@@ -7,6 +7,7 @@ import type { AxisMode } from '../engine/view'
 import type { RunnerStatus } from '../runners/types'
 import type { useProjectLibrary } from '../hooks/useProjectLibrary'
 import type { VoxelControls } from '../hooks/useVoxelControls'
+import { initial as initialVoxelView } from '../renderers/voxelGeometry'
 
 export type MenuKey = 'project' | 'edit' | 'reference' | 'view' | 'run' | 'help' | null
 
@@ -372,7 +373,7 @@ export function WorkspaceMenuBar({
                 </button>
                 <button
                   role="menuitem"
-                  onClick={() => handleAction(() => voxelControls.setView({ yaw: -0.65, pitch: 0.45, zoom: 1, topDown: false }))}
+                  onClick={() => handleAction(() => voxelControls.setView(initialVoxelView))}
                 >
                   重置视角
                 </button>

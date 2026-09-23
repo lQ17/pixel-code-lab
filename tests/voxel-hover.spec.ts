@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { enterChallenge3d, loadExample, runCode, toggleVoxelCutHandles } from './helpers'
+import { rotatePoint } from '../src/renderers/voxelGeometry'
 
 test('三维可见体素悬停、颜色、离开隐藏与剖切截面', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -14,15 +15,14 @@ test('三维可见体素悬停、颜色、离开隐藏与剖切截面', async ({
     const [yaw, pitch, zoom] = (await canvas.getAttribute('data-view'))!.split(',').map(Number)
     const scale = (Math.min(box.width, box.height) / 34.2) * zoom
     const hover = async (x: number, y: number, z: number) => {
-      const a = Math.cos(yaw) * x + Math.sin(yaw) * z
-      const b = -Math.sin(yaw) * x + Math.cos(yaw) * z
+      const [a, b] = rotatePoint([x, y, z], { yaw, pitch, zoom })
       await page.mouse.move(
         box.x + box.width / 2 + a * scale,
-        box.y + box.height / 2 - (Math.cos(pitch) * y - Math.sin(pitch) * b) * scale
+        box.y + box.height / 2 - b * scale
       )
     }
-    await hover(1, 1, 3.5)
-    await expect(page.getByRole('tooltip')).toContainText('x: 1, y: 1, z: 3')
+    await hover(1, -3.5, 1)
+    await expect(page.getByRole('tooltip')).toContainText('x: 1, y: -3, z: 1')
     await expect(page.getByRole('tooltip')).toContainText('橙')
     await expect(page.getByRole('tooltip').locator('.coordinate-swatch')).toHaveCSS(
       'background-color',
@@ -39,16 +39,10 @@ test('三维可见体素悬停、颜色、离开隐藏与剖切截面', async ({
   const canvas = page.getByLabel('三维参考图画布')
   const box = (await canvas.boundingBox())!
   const scale = Math.min(box.width, box.height) / 34.2
-  const yaw = -0.65,
-    pitch = 0.45,
-    x = 0.5,
-    y = -2,
-    z = 2,
-    a = Math.cos(yaw) * x + Math.sin(yaw) * z,
-    b = -Math.sin(yaw) * x + Math.cos(yaw) * z
+  const [a, b] = rotatePoint([0.5, -2, 2], { yaw: -0.65, pitch: 0.45, zoom: 1 })
   await page.mouse.move(
     box.x + box.width / 2 + a * scale,
-    box.y + box.height / 2 - (Math.cos(pitch) * y - Math.sin(pitch) * b) * scale
+    box.y + box.height / 2 - b * scale
   )
   await expect(page.getByRole('tooltip')).toContainText('x: 0, y: -2, z: 2')
   await page.screenshot({ path: 'test-results/voxel-hover.png' })

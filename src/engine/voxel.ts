@@ -21,8 +21,8 @@ export const voxelLevels = {
   },
   'voxel-cylinder': {
     title: '圆柱',
-    target: (x, y, z) => x*x + z*z <= 16 && Math.abs(y) <= 4 ? 4 : 0,
-    exampleCode: 'def voxel(x, y, z):\n    if x*x + z*z <= 16 and abs(y) <= 4:\n        return 4\n    return 0\n',
+    target: (x, y, z) => x*x + y*y <= 16 && Math.abs(z) <= 4 ? 4 : 0,
+    exampleCode: 'def voxel(x, y, z):\n    if x*x + y*y <= 16 and abs(z) <= 4:\n        return 4\n    return 0\n',
   },
   'voxel-sphere': {
     title: '球体',
@@ -31,25 +31,25 @@ export const voxelLevels = {
   },
   'voxel-stairs': {
     title: '彩色阶梯',
-    target: (x, y, z) => Math.abs(z) <= 2 && x >= -5 && x <= 5 && y >= -5 && y <= x ? (x + 5) % 6 + 1 : 0,
-    exampleCode: 'def voxel(x, y, z):\n    if abs(z) <= 2 and -5 <= x <= 5 and -5 <= y <= x:\n        return (x + 5) % 6 + 1\n    return 0\n',
+    target: (x, y, z) => Math.abs(y) <= 2 && x >= -5 && x <= 5 && z >= -5 && z <= x ? (x + 5) % 6 + 1 : 0,
+    exampleCode: 'def voxel(x, y, z):\n    if abs(y) <= 2 and -5 <= x <= 5 and -5 <= z <= x:\n        return (x + 5) % 6 + 1\n    return 0\n',
   },
   'voxel-pyramid': {
     title: '金字塔',
-    target: (x, y, z) => y >= -5 && y <= 1 && Math.max(Math.abs(x), Math.abs(z)) <= 1 - y ? 3 : 0,
-    exampleCode: 'def voxel(x, y, z):\n    if -5 <= y <= 1 and max(abs(x), abs(z)) <= 1 - y:\n        return 3\n    return 0\n',
+    target: (x, y, z) => z >= -5 && z <= 1 && Math.max(Math.abs(x), Math.abs(y)) <= 1 - z ? 3 : 0,
+    exampleCode: 'def voxel(x, y, z):\n    if -5 <= z <= 1 and max(abs(x), abs(y)) <= 1 - z:\n        return 3\n    return 0\n',
   },
   'voxel-house': {
     title: '简单房屋',
     target: (x, y, z) => {
-      if (y >= 1 && y <= 5 && Math.abs(z) <= 4 && Math.abs(x) <= 5 - y) return 1
-      if (Math.abs(x) <= 3 && Math.abs(z) <= 3 && y >= -4 && y <= 0) {
-        if (z === 3 && ((Math.abs(x) <= 1 && y <= -2) || (Math.abs(x) === 2 && y === -1))) return 5
+      if (z >= 1 && z <= 5 && Math.abs(y) <= 4 && Math.abs(x) <= 5 - z) return 1
+      if (Math.abs(x) <= 3 && Math.abs(y) <= 3 && z >= -4 && z <= 0) {
+        if (y === -3 && ((Math.abs(x) <= 1 && z <= -2) || (Math.abs(x) === 2 && z === -1))) return 5
         return 3
       }
       return 0
     },
-    exampleCode: 'def voxel(x, y, z):\n    if 1 <= y <= 5 and abs(z) <= 4 and abs(x) <= 5 - y:\n        return 1\n    if abs(x) <= 3 and abs(z) <= 3 and -4 <= y <= 0:\n        if z == 3 and ((abs(x) <= 1 and y <= -2) or (abs(x) == 2 and y == -1)):\n            return 5\n        return 3\n    return 0\n',
+    exampleCode: 'def voxel(x, y, z):\n    if 1 <= z <= 5 and abs(y) <= 4 and abs(x) <= 5 - z:\n        return 1\n    if abs(x) <= 3 and abs(y) <= 3 and -4 <= z <= 0:\n        if y == -3 and ((abs(x) <= 1 and z <= -2) or (abs(x) == 2 and z == -1)):\n            return 5\n        return 3\n    return 0\n',
   },
 } satisfies Record<string, VoxelLevel>
 

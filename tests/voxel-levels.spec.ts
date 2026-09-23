@@ -5,6 +5,7 @@ import { loadPyodide } from 'pyodide'
 import { defaultVoxelId, getVoxelLevel, legacyVoxelExampleIds, voxelRadius, voxelReference, voxelTargetIds } from '../src/engine/voxel'
 import { parseProgress, STORAGE_KEY } from '../src/hooks/useProgress'
 import { evaluate } from '../src/engine/evaluate'
+import { rotatePoint } from '../src/renderers/voxelGeometry'
 
 const counts = {
   'voxel-cube': 343, 'voxel-hollow-cube': 386, 'voxel-cylinder': 441,
@@ -32,23 +33,33 @@ test('七关目标的体积、边界、内部空腔和组合颜色正确', () =>
   filled[(8 * 17 + 8) * 17 + 8] = 6
   expect(evaluate(target, filled).passed).toBe(false)
   const cylinder = getVoxelLevel('voxel-cylinder').target
-  expect(cylinder(4, 4, 0)).toBe(4)
-  expect(cylinder(4, -4, 0)).toBe(4)
-  expect(cylinder(4, 0, 1)).toBe(0)
-  expect(cylinder(0, 5, 0)).toBe(0)
+  expect(cylinder(4, 0, 4)).toBe(4)
+  expect(cylinder(4, 0, -4)).toBe(4)
+  expect(cylinder(4, 1, 0)).toBe(0)
+  expect(cylinder(0, 0, 5)).toBe(0)
   const pyramid = getVoxelLevel('voxel-pyramid').target
-  expect(pyramid(-6, -5, 6)).toBe(3)
-  expect(pyramid(0, 1, 0)).toBe(3)
-  expect(pyramid(1, 1, 0)).toBe(0)
-  expect(pyramid(0, 2, 0)).toBe(0)
+  expect(pyramid(-6, 6, -5)).toBe(3)
+  expect(pyramid(0, 0, 1)).toBe(3)
+  expect(pyramid(1, 0, 1)).toBe(0)
+  expect(pyramid(0, 0, 2)).toBe(0)
   const house = getVoxelLevel('voxel-house').target
-  expect(house(0, -2, 0)).toBe(3)
-  expect(house(0, -2, 3)).toBe(5)
-  expect(house(-2, -1, 3)).toBe(5)
-  expect(house(2, -1, 3)).toBe(5)
-  expect(house(0, 5, -4)).toBe(1)
-  expect(house(1, 5, 0)).toBe(0)
+  expect(house(0, 0, -2)).toBe(3)
+  expect(house(0, -3, -2)).toBe(5)
+  expect(house(-2, -3, -1)).toBe(5)
+  expect(house(2, -3, -1)).toBe(5)
+  expect(house(0, 4, 5)).toBe(1)
+  expect(house(1, 0, 5)).toBe(0)
   expect(house(4, 0, 0)).toBe(0)
+  expect(house(0, 3, -2)).toBe(3)
+})
+
+test('Z 轴为高度，俯视 XY 平面，投影保持右手方向', () => {
+  const view = { yaw: 0, pitch: 0, zoom: 1 }
+  expect(rotatePoint([1, 0, 0], view)).toEqual([1, 0, 0])
+  expect(rotatePoint([0, 0, 1], view)).toEqual([0, 1, 0])
+  expect(rotatePoint([0, -1, 0], view)).toEqual([0, 0, 1])
+  const topDown = { ...view, topDown: true }
+  expect(rotatePoint([1, 2, 3], topDown)).toEqual([1, 2, 3])
 })
 
 test('七关 Python 示例通过真实执行层生成与目标逐格一致的数据', async () => {

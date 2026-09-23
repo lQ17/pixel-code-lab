@@ -1,7 +1,7 @@
 import type { Point } from './voxelGeometry'
 
 // World-space light, independent of camera rotation.
-const sun: Point = [-0.65, 1, 0.25]
+const sun: Point = [-0.65, 0.25, 1]
 const sunLength = Math.hypot(...sun)
 type Occupancy = (x: number, y: number, z: number) => number
 

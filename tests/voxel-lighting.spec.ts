@@ -3,14 +3,14 @@ import { directionalLight, cornerOcclusion } from '../src/renderers/voxelLightin
 import { enterChallenge3d, loadExample, runCode, openMenu } from './helpers'
 
 test('角点 AO 保留局部差异、剖切恢复、平面不自遮挡', () => {
-  const corners: [number, number, number][] = [[-.5,.5,-.5],[-.5,.5,.5],[.5,.5,.5],[.5,.5,-.5]]
-  expect(directionalLight([0,1,0])).toBeGreaterThan(directionalLight([0,-1,0]) + .5)
+  const corners: [number, number, number][] = [[.5,-.5,.5],[.5,.5,.5],[-.5,.5,.5],[-.5,-.5,.5]]
+  expect(directionalLight([0,0,1])).toBeGreaterThan(directionalLight([0,0,-1]) + .5)
   const wall = (x: number, y: number) => Number(x === 1 && y === 1)
-  const ao = cornerOcclusion([0,0,0], [0,1,0], corners, wall)
-  expect(ao[0]).toBe(0)
-  expect(ao[2]).toBeGreaterThan(.5)
-  expect(cornerOcclusion([0,0,0], [0,1,0], corners, (_x,y) => Number(y <= 0))).toEqual([0,0,0,0])
-  expect(cornerOcclusion([0,0,0], [0,1,0], corners, (x,y) => x <= 0 ? wall(x,y) : 0)).toEqual([0,0,0,0])
+  const ao = cornerOcclusion([0,0,0], [0,0,1], corners, wall)
+  expect(ao[3]).toBe(0)
+  expect(ao[1]).toBeCloseTo(1 / 3)
+  expect(cornerOcclusion([0,0,0], [0,0,1], corners, (_x,_y,z) => Number(z <= 0))).toEqual([0,0,0,0])
+  expect(cornerOcclusion([0,0,0], [0,0,1], corners, (x,y) => x <= 0 ? wall(x,y) : 0)).toEqual([0,0,0,0])
 })
 
 test('光影双图同步，开关改变像素但不改变体素与成绩', async ({ page }) => {
