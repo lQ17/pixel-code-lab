@@ -5,7 +5,7 @@ import { palette, colorNames } from '../engine/levels'
 import { faces, rotatePoint, type Point } from './voxelGeometry'
 import { directionalLight, cornerOcclusion, paintOcclusion, litColor } from './voxelLighting'
 
-export function VoxelCanvas({ colors, radius, controls, label = '三维体素画布' }: { colors: number[]; radius: number; controls: VoxelControls; label?: string; showControls?: boolean }) {
+export function VoxelCanvas({ colors, radius, controls, label = '三维体素画布', onEdit, editLayer = 0 }: { colors: number[]; radius: number; controls: VoxelControls; label?: string; showControls?: boolean; onEdit?: (hit: { voxel: Point; normal: Point; empty: boolean; dye: boolean }) => void; editLayer?: number }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const { view, setView, axes, cuts, setCuts, showCutHandles, lighting } = controls
   const cutDrag = useRef<{ axis: number; x: number; y: number; value: number; dx: number; dy: number } | null>(null)
@@ -31,7 +31,7 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
     if (!pointer || pointer.view !== view || pointer.cuts !== cuts || pointer.colors !== colors || pointer.size !== size) return null
     const scale = Math.min(size.width,size.height)/((radius*2+3)*1.8)*view.zoom
     const px = (pointer.x-size.width/2)/scale, py = (size.height/2-pointer.y)/scale
-    let nearest: { voxel: Point; color: number; depth: number } | null = null
+    let nearest: { voxel: Point; normal: Point; color: number; depth: number } | null = null
     for (const face of surface) {
       const normal = rotatePoint(face.normal,view)
       if (normal[2] <= .001) continue
@@ -46,10 +46,22 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
       if (positive && negative) continue
       const center=rotatePoint(face.center,view)
       const depth=center[2]-(normal[0]*(px-center[0])+normal[1]*(py-center[1]))/normal[2]
-      if (!nearest || depth > nearest.depth) nearest={voxel:face.voxel,color:face.color,depth}
+      if (!nearest || depth > nearest.depth) nearest={voxel:face.voxel,normal:face.normal,color:face.color,depth}
     }
     return nearest
   }, [pointer,view,cuts,colors,size,radius,surface])
+  const emptyHit = useMemo(() => {
+    if (!onEdit || !pointer || hover) return null
+    const scale = Math.min(size.width,size.height)/((radius*2+3)*1.8)*view.zoom
+    const px = (pointer.x-size.width/2)/scale, py = (size.height/2-pointer.y)/scale
+    const ex = rotatePoint([1,0,0],view), ey = rotatePoint([0,1,0],view), ez = rotatePoint([0,0,editLayer],view)
+    const det = ex[0]*ey[1]-ex[1]*ey[0]
+    if (Math.abs(det) < .05) return null
+    const x = Math.round(((px-ez[0])*ey[1]-(py-ez[1])*ey[0])/det)
+    const y = Math.round((ex[0]*(py-ez[1])-ex[1]*(px-ez[0]))/det)
+    if (Math.abs(x)>radius || Math.abs(y)>radius) return null
+    return [x,y,editLayer] as Point
+  }, [onEdit,pointer,hover,size,view,editLayer,radius])
   useEffect(() => {
     const element = canvas.current!
     const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }))
@@ -92,6 +104,11 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
       if (hover && face.voxel.every((v,i) => v === hover.voxel[i])) {
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.stroke()
       }
+    }
+    if (onEdit && emptyHit) {
+      const points = faces[4].corners.map(([a,b,c]) => project([emptyHit[0]+a,emptyHit[1]+b,emptyHit[2]+c]))
+      ctx.fillStyle='#6aefce55'; ctx.strokeStyle='#b9fff0'; ctx.lineWidth=1.5
+      ctx.beginPath(); points.forEach(([x,y],i) => { if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y) }); ctx.closePath(); ctx.fill(); ctx.stroke()
     }
     if (axes) {
       // Select a silhouette edge for each axis. All coordinates use the same
@@ -173,7 +190,7 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
         text('+'+label,bx+dx*14+nx*14,by+dy*14+ny*14)
       }
     }
-  }, [surface, radius, view, axes, size, colors, cuts, hover])
+  }, [surface, radius, view, axes, size, colors, cuts, hover, onEdit, emptyHit])
   const scale = Math.min(size.width, size.height) / ((radius * 2 + 3) * 1.8) * view.zoom
   const vectors = ([ [1,0,0], [0,1,0], [0,0,1] ] as Point[]).map(point => {
     const [x,y] = rotatePoint(point, view)
@@ -184,7 +201,8 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
   const shown = colors.filter((color,index) => color && index%side-radius<=cuts[0] && radius-Math.floor(index/side)%side<=cuts[1] && Math.floor(index/(side*side))-radius<=cuts[2]).length
   return <div className="voxel-viewport" data-lighting={lighting} data-cuts={cuts.join(',')} data-visible-voxels={shown}>
     <canvas ref={canvas} aria-label={label} tabIndex={0} data-view={`${view.yaw},${view.pitch},${view.zoom}`} data-voxels={colors.filter(Boolean).length}
-      onPointerDown={e => { setPointer(null); drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId }; e.currentTarget.setPointerCapture(e.pointerId) }}
+      onPointerDown={e => { if (onEdit && e.button === 0) { if (hover) onEdit({ voxel:hover.voxel, normal:hover.normal, empty:false, dye:e.shiftKey }); else if (emptyHit) onEdit({ voxel:emptyHit,normal:[0,0,1],empty:true,dye:e.shiftKey }); return } setPointer(null); drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId }; e.currentTarget.setPointerCapture(e.pointerId) }}
+      onContextMenu={e => { if (onEdit) e.preventDefault() }}
       onPointerMove={e => { const last = drag.current; if (!last) { const box=e.currentTarget.getBoundingClientRect(); setPointer({ x:e.clientX-box.left,y:e.clientY-box.top,view,cuts,colors,size }); return } if (last.id !== e.pointerId) return; const dx = e.clientX-last.x, dy = e.clientY-last.y; drag.current = { x:e.clientX,y:e.clientY,id:e.pointerId }; setView(v => ({ ...v,topDown:false,yaw:v.yaw+dx*.008,pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,v.pitch+dy*.008)) })) }}
       onPointerLeave={() => setPointer(null)}
       onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }} onLostPointerCapture={() => { drag.current = null }}

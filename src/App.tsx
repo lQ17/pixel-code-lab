@@ -13,13 +13,18 @@ import { PythonRunner, RunFailure } from './runners/PythonRunner'
 import type { RunnerStatus } from './runners/types'
 import { useProgress } from './hooks/useProgress'
 import { patchCreationDraft, useProjectLibrary } from './hooks/useProjectLibrary'
-import { defaultVoxelId, getVoxelLevel, voxelRadius, voxelStarter, voxelReference, type VoxelLevelId } from './engine/voxel'
+import { defaultVoxelId, getVoxelLevel, isVoxelLevelId, voxelRadius, voxelStarter, voxelReference, type VoxelLevelId } from './engine/voxel'
 import { parseHash, routeToHash, type AppRoute, type Mode, type Activity } from './navigation/route'
 import { StartPage } from './pages/StartPage'
 import { WorkspacePage, type Work } from './pages/WorkspacePage'
 import './App.css'
+import { getLevel, loadContent, publishedKey, emptyContent } from './engine/content'
+import { AdminPage } from './pages/AdminPage'
 
 export default function App() {
+  const [content, setContent] = useState(() => { try { return loadContent(publishedKey) } catch { return emptyContent() } })
+  const contentSignature = useRef(JSON.stringify(content.levels.map(level => [level.id, level.revision, level.targetColors, level.archived])))
+  useEffect(() => { const refresh = (event: Event) => { if ((event as CustomEvent).detail !== publishedKey) return; try { const next=loadContent(publishedKey); const signature=JSON.stringify(next.levels.map(level => [level.id, level.revision, level.targetColors, level.archived])); if (contentSignature.current!==signature) { contentSignature.current=signature; generation.current++; runner.current?.stop(); setWorks({}) } setContent(next); const parsed=parseHash(window.location.hash,progressRef.current); if (routeToHash(parsed)!==window.location.hash) setRoute(parsed) } catch { /* retain last valid content */ } }; window.addEventListener('contentchange', refresh); return () => window.removeEventListener('contentchange', refresh) }, [])
   const { progress, update, commit, saveState, message, retrySave } = useProgress()
   const progressRef = useRef(progress)
   useEffect(() => {
@@ -48,7 +53,7 @@ export default function App() {
   const activeActivity: Activity = route.activity
   const isCreation = activeActivity === 'create'
 
-  const voxelLevelId: VoxelLevelId =
+  const voxelLevelId: string =
     route.kind === 'work' && route.mode === '3d' && route.activity === 'challenge'
       ? (route.levelId as VoxelLevelId)
       : (progress.voxelLevelId ?? defaultVoxelId)
@@ -83,9 +88,10 @@ export default function App() {
   const voxelControls = useVoxelControls(voxelRadius)
   const referenceId = is3d && isCreation
     ? ((isBlocks ? progress.voxelBlocks?.referenceId : progress.voxelReferenceId) ?? defaultVoxelId)
-    : voxelLevelId
+    : (isVoxelLevelId(voxelLevelId) ? voxelLevelId : defaultVoxelId)
   const selectedVoxelLevel = getVoxelLevel(referenceId)
-  const reference = useMemo(() => voxelReference(referenceId), [referenceId])
+  const dynamicVoxelTarget = useMemo(() => getLevel(voxelLevelId, content), [voxelLevelId, content])
+  const reference = useMemo(() => is3d && !isCreation && dynamicVoxelTarget?.mode === '3d' ? dynamicVoxelTarget.colors : voxelReference(referenceId), [is3d, isCreation, dynamicVoxelTarget, referenceId])
 
   // 会话状态（页面切换不卸载）
   const [creationRevision, setCreationRevision] = useState(0)
@@ -138,7 +144,9 @@ export default function App() {
   )
 
   // 初始化 Runner
+  const adminMode = route.kind === 'admin'
   useEffect(() => {
+    if (adminMode) return
     const tickets = generation
     const instance = new PythonRunner((next, detail) => {
       setStatus(next)
@@ -150,7 +158,7 @@ export default function App() {
       instance.dispose()
       runner.current = null
     }
-  }, [])
+  }, [adminMode])
 
   // 监听 Hash 变更（支持前进、后退与外部链接）
   useEffect(() => {
@@ -185,7 +193,7 @@ export default function App() {
       if (nextRoute.kind === 'work') {
         if (nextRoute.mode === '3d') {
           if (nextRoute.activity === 'challenge') {
-            update({ mode: '3d', voxelActivity: 'challenge', voxelLevelId: nextRoute.levelId as VoxelLevelId }, true)
+            update({ mode: '3d', voxelActivity: 'challenge', voxelLevelId: nextRoute.levelId }, true)
           } else {
             update({ mode: '3d', voxelActivity: 'create' }, true)
           }
@@ -196,7 +204,7 @@ export default function App() {
             update({ mode: '2d', pixelActivity: 'create' }, true)
           }
         }
-      } else {
+      } else if (nextRoute.kind === 'start') {
         update(
           {
             mode: nextRoute.mode,
@@ -224,10 +232,11 @@ export default function App() {
 
   // 目标与当前代码
   const challengeLevel = levels.find(item => item.id === levelId) || levels[0]
+  const dynamicPixelTarget = useMemo(() => getLevel(levelId, content), [levelId, content])
   const level = !is3d && isCreation ? { ...selectedPixelReference, id: pixelReferenceId, radius: pixelRadius } : challengeLevel
   const target = useMemo(
-    () => (!is3d && isCreation ? pixelReference(pixelReferenceId) : targetColors(challengeLevel)),
-    [is3d, isCreation, pixelReferenceId, challengeLevel]
+    () => (!is3d && isCreation ? pixelReference(pixelReferenceId) : dynamicPixelTarget?.mode === '2d' ? dynamicPixelTarget.colors : targetColors(challengeLevel)),
+    [is3d, isCreation, pixelReferenceId, challengeLevel, dynamicPixelTarget]
   )
 
   const code = isBlocks
@@ -255,7 +264,7 @@ export default function App() {
     setStale(previous => ({ ...previous, [selected]: true }))
 
     try {
-      const result = await runner.current.run(source, is3d ? voxelRadius : level.radius, activeMode)
+      const result = await runner.current.run(source, is3d ? voxelRadius : (isCreation ? pixelRadius : dynamicPixelTarget?.radius ?? level.radius), activeMode)
       if (generation.current !== ticket) return
       const score = isCreation ? null : evaluate(is3d ? reference : target, result.colors)
       setWorks(previous => ({
@@ -417,12 +426,14 @@ export default function App() {
   }
 
   // 渲染分发
+  if (route.kind === 'admin') return <AdminPage key={`${route.page}-${route.levelId ?? ''}`} route={route} onNavigate={navigateTo} />
   if (route.kind === 'start') {
     return (
       <StartPage
         mode={route.mode}
         activity={route.activity}
         progress={progress}
+        content={content}
         saveState={saveState}
         storageMessage={message}
         retrySave={retrySave}
@@ -443,6 +454,7 @@ export default function App() {
       isBlocks={isBlocks}
       levelId={levelId}
       voxelLevelId={voxelLevelId}
+      customLevel={isCreation ? null : is3d ? dynamicVoxelTarget : dynamicPixelTarget}
       pixelReferenceId={pixelReferenceId}
       code={code}
       template={template}
@@ -485,7 +497,7 @@ export default function App() {
       onSwitchEditor={switchEditor}
       onRestoreTemplate={restoreTemplate}
       onLoadExample={
-        (is3d && selectedVoxelLevel.exampleCode !== undefined) || (!is3d && isCreation)
+        (is3d && (isCreation || isVoxelLevelId(voxelLevelId)) && selectedVoxelLevel.exampleCode !== undefined) || (!is3d && isCreation)
           ? loadExample
           : undefined
       }

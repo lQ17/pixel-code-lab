@@ -16,6 +16,8 @@ import type { ProgressData, SaveState } from '../hooks/useProgress'
 import type { useProjectLibrary } from '../hooks/useProjectLibrary'
 import type { VoxelControls } from '../hooks/useVoxelControls'
 import { evaluate, targetColors } from '../engine/evaluate'
+import type { getLevel } from '../engine/content'
+import { isVoxelLevelId } from '../engine/voxel'
 
 const BlocksEditor = lazy(() => import('../components/BlocksEditor'))
 const CodeEditor = lazy(() => import('../components/CodeEditor'))
@@ -33,7 +35,8 @@ interface WorkspacePageProps {
   isCreation: boolean
   isBlocks: boolean
   levelId: string
-  voxelLevelId: VoxelLevelId
+  voxelLevelId: string
+  customLevel: ReturnType<typeof getLevel>
   pixelReferenceId: PixelReferenceId
   code: string
   template: string
@@ -85,6 +88,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
     isBlocks,
     levelId,
     voxelLevelId,
+    customLevel,
     pixelReferenceId,
     code,
     template,
@@ -159,34 +163,34 @@ export function WorkspacePage(props: WorkspacePageProps) {
   const activeTitle = useMemo(() => {
     if (is3d) {
       if (isCreation) return library.name || '三维创作草稿'
-      return `3D 关卡 · ${getVoxelLevel(voxelLevelId).title}`
+      return `3D 关卡 · ${customLevel?.title ?? voxelLevelId}`
     } else {
       if (isCreation) return library.name || '二维创作草稿'
       const levelObj = levels.find(l => l.id === levelId)
-      return `2D 关卡 · ${levelObj?.title || levelId}`
+      return `2D 关卡 · ${customLevel?.title ?? levelObj?.title ?? levelId}`
     }
-  }, [is3d, isCreation, library.name, voxelLevelId, levelId])
+  }, [is3d, isCreation, library.name, voxelLevelId, levelId, customLevel?.title])
 
   // 二维目标数据
   const challengeLevel = levels.find(item => item.id === levelId) || levels[0]
   const targetColorsArray = useMemo(() => {
     if (!is3d && isCreation) return pixelReference(pixelReferenceId)
-    return targetColors(challengeLevel)
-  }, [is3d, isCreation, pixelReferenceId, challengeLevel])
+    return customLevel?.mode === '2d' ? customLevel.colors : targetColors(challengeLevel)
+  }, [is3d, isCreation, pixelReferenceId, challengeLevel, customLevel])
   const blankColors = useMemo(() => targetColorsArray.map(() => 0), [targetColorsArray])
 
   // 三维参考数据
-  const voxelRefId = isCreation ? ((isBlocks ? progress.voxelBlocks?.referenceId : progress.voxelReferenceId) ?? 'voxel-cube') : voxelLevelId
+  const voxelRefId = isCreation ? ((isBlocks ? progress.voxelBlocks?.referenceId : progress.voxelReferenceId) ?? 'voxel-cube') : (isVoxelLevelId(voxelLevelId) ? voxelLevelId : 'voxel-cube')
   const voxelReferenceColors = useMemo(() => {
-    return voxelReference(voxelRefId)
-  }, [voxelRefId])
+    return !isCreation && customLevel?.mode === '3d' ? customLevel.colors : voxelReference(voxelRefId)
+  }, [voxelRefId, isCreation, customLevel])
 
   // 尺寸计算
   const gridSizeLabel = is3d
     ? '17 × 17 × 17'
     : isCreation
       ? `${pixelRadius * 2 + 1} × ${pixelRadius * 2 + 1}`
-      : `${challengeLevel.radius * 2 + 1} × ${challengeLevel.radius * 2 + 1}`
+      : `${(customLevel?.radius ?? challengeLevel.radius) * 2 + 1} × ${(customLevel?.radius ?? challengeLevel.radius) * 2 + 1}`
 
   const isClipped = voxelControls.cuts.some(c => c < voxelRadius)
 
@@ -225,6 +229,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
             selectedPixelRefId={pixelReferenceId}
             selectedVoxelRefId={voxelRefId}
             levelId={levelId}
+            customLevel={customLevel}
             library={library}
             showOutput={showOutput}
             showPalette={showPalette}
@@ -323,10 +328,10 @@ export function WorkspacePage(props: WorkspacePageProps) {
                 <h2>
                   {isCreation ? '参考图' : '目标图'} ·{' '}
                   {is3d
-                    ? getVoxelLevel(voxelRefId).title
+                    ? (isCreation ? getVoxelLevel(voxelRefId).title : customLevel?.title ?? getVoxelLevel(voxelRefId).title)
                     : isCreation
                       ? pixelReferences[pixelReferenceId].title
-                      : challengeLevel.title}
+                      : customLevel?.title ?? challengeLevel.title}
                 </h2>
               </div>
               <div className="heading-tags">
@@ -347,7 +352,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
                 <PixelCanvas
                   key={`target-${levelId}`}
                   colors={targetColorsArray}
-                  radius={isCreation ? pixelRadius : challengeLevel.radius}
+                  radius={isCreation ? pixelRadius : customLevel?.radius ?? challengeLevel.radius}
                   label="目标图画布"
                   view={view}
                   setView={onSetView}
@@ -412,7 +417,7 @@ export function WorkspacePage(props: WorkspacePageProps) {
                   <PixelCanvas
                     key={`work-${levelId}`}
                     colors={work?.colors ?? blankColors}
-                    radius={isCreation ? pixelRadius : challengeLevel.radius}
+                    radius={isCreation ? pixelRadius : customLevel?.radius ?? challengeLevel.radius}
                     label="学生作品画布"
                     view={view}
                     setView={onSetView}

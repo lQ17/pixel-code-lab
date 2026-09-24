@@ -2,14 +2,17 @@ import { useState } from 'react'
 import { LevelGlyph, PixelMark } from '../components/GameIcons'
 import { HelpDialog } from '../components/HelpDialog'
 import { levels } from '../engine/levels'
-import { getVoxelLevel, voxelTargetIds, type VoxelLevelId } from '../engine/voxel'
+import { getVoxelLevel, voxelTargetIds } from '../engine/voxel'
 import type { ProgressData, SaveState } from '../hooks/useProgress'
 import { getResumeRoute, type Activity, type AppRoute, type Mode } from '../navigation/route'
+import { getLevel, visibleLevels, type ContentPackage } from '../engine/content'
+import { LevelThumbnail } from '../components/LevelThumbnail'
 
 interface StartPageProps {
   mode: Mode
   activity: Activity
   progress: ProgressData
+  content: ContentPackage
   saveState: SaveState
   storageMessage: string
   retrySave: () => void
@@ -23,6 +26,7 @@ export function StartPage({
   mode,
   activity,
   progress,
+  content,
   saveState,
   storageMessage,
   retrySave,
@@ -32,6 +36,8 @@ export function StartPage({
   onHelpClosed,
 }: StartPageProps) {
   const [showHelp, setShowHelp] = useState(false)
+  const [chapterId, setChapterId] = useState<string | null>(null)
+  const [sectionId, setSectionId] = useState<string | null>(null)
   const is3d = mode === '3d'
   const isChallenge = activity === 'challenge'
 
@@ -47,11 +53,11 @@ export function StartPage({
   const resumeTitle = (() => {
     if (resumeRoute.mode === '3d') {
       if (resumeRoute.activity === 'create') return '3D 体素 · 自由创作'
-      const name = getVoxelLevel(resumeRoute.levelId as VoxelLevelId)?.title || resumeRoute.levelId
+      const name = getLevel(resumeRoute.levelId, content)?.title || resumeRoute.levelId
       return `3D 体素 · 挑战：${name}`
     } else {
       if (resumeRoute.activity === 'create') return '2D 像素 · 自由创作'
-      const name = levels.find(l => l.id === resumeRoute.levelId)?.title || resumeRoute.levelId
+      const name = getLevel(resumeRoute.levelId, content)?.title || resumeRoute.levelId
       return `2D 像素 · 挑战：${name}`
     }
   })()
@@ -84,6 +90,7 @@ export function StartPage({
           </button>
         </div>
 
+        <button className="help-button" onClick={() => onNavigate({ kind: 'admin', mode: '2d', activity: 'challenge', page: 'levels' })}>内容管理</button>
         <button className="help-button" onClick={() => setShowHelp(true)}>
           <span aria-hidden="true">?</span> 使用说明
         </button>
@@ -112,10 +119,17 @@ export function StartPage({
 
         {isChallenge ? (
           <section className="start-content challenge-view">
+            {content.chapters.length > 0 && <div className="course-catalog">
+              <div className="section-head"><h2>课程目录</h2><span className="micro">章节 → 小节 → 关卡</span></div>
+              {!chapterId && content.chapters.slice().sort((a,b) => a.order-b.order).map(chapter => <button className="start-card" key={chapter.id} onClick={() => { setChapterId(chapter.id); setSectionId(null) }}><h3>{chapter.title}</h3><p>{chapter.description}</p><span>进入章节 →</span></button>)}
+              {chapterId && <><button onClick={() => { setChapterId(null); setSectionId(null) }}>← 全部章节</button><h3>{content.chapters.find(c => c.id === chapterId)?.title}</h3></>}
+              {chapterId && !sectionId && content.sections.filter(s => s.chapterId === chapterId).sort((a,b) => a.order-b.order).map(section => <button className="start-card" key={section.id} onClick={() => setSectionId(section.id)}><h3>{section.title}</h3><p>{section.description}</p><span>选择关卡 →</span></button>)}
+              {sectionId && <><button onClick={() => setSectionId(null)}>← 返回小节</button><h3>{content.sections.find(s => s.id === sectionId)?.title}</h3><div className="start-cards-grid">{visibleLevels(content, sectionId).filter(level => level.mode === mode).map(level => <button className="start-card" key={level.id} onClick={() => onNavigate({ kind: 'work', mode: level.mode, activity: 'challenge', levelId: level.id })}><LevelThumbnail colors={level.colors} mode={level.mode} radius={level.radius} /><h3>{level.title}</h3><p>{level.description}</p><span>{(level.mode === '3d' ? progress.voxelPassed : progress.passed)?.[level.id] ? '已通关' : '开始挑战'} →</span></button>)}</div></>}
+            </div>}
             <div className="section-head challenge-head">
               <div className="challenge-intro">
                 <span className="micro">{is3d ? '3D VOXEL CHALLENGE' : '2D PIXEL CHALLENGE'}</span>
-                <h2>{is3d ? '3D 体素编程关卡' : '2D 像素编程关卡'}</h2>
+                <h2>{is3d ? '3D 体素样例关卡' : '2D 像素样例关卡'}</h2>
                 <p>{is3d ? '七关' : '三关'}全部开放。编写函数绘出目标，开启下一段像素冒险。</p>
                 <div className="start-progress-badge">
                   <div className="progress-slots" aria-label={`已通关 ${passedCount} / ${totalCount} 关`}>

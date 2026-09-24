@@ -60,9 +60,12 @@ test('挑战积木存档兼容旧数据，逐关恢复，非法新字段拒绝',
   expect(parseProgress(JSON.stringify(parsed))).toEqual(parsed)
   for (const patch of [
     { pixelChallengeEditors: [] }, { pixelChallengeEditors: { square: 'javascript' } },
-    { pixelChallengeEditors: { unknown: 'blocks' } }, { pixelChallengeBlocks: [] },
-    { pixelChallengeBlocks: { square: { version: 99 } } }, { pixelChallengeBlocks: { unknown: emptyBlocks } },
+    { pixelChallengeEditors: { unknown: 'javascript' } }, { pixelChallengeBlocks: [] },
+    { pixelChallengeBlocks: { square: { version: 99 } } }, { pixelChallengeBlocks: { unknown: { version: 99 } } },
   ]) expect(() => parseProgress(JSON.stringify({ ...base, ...patch }))).toThrow()
+  const unavailable = parseProgress(JSON.stringify({ ...base, codes: { 'unavailable-level': 'def pixel(x, y):\n    return 0' }, passed: { 'unavailable-level': true }, pixelChallengeEditors: { 'unavailable-level': 'blocks' }, pixelChallengeBlocks: { 'unavailable-level': emptyBlocks } }))
+  expect(unavailable.codes['unavailable-level']).toContain('def pixel')
+  expect(unavailable.passed['unavailable-level']).toBe(true)
 })
 
 for (const level of levels) {

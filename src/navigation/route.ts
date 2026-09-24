@@ -1,6 +1,7 @@
 import { levels } from '../engine/levels'
 import { defaultVoxelId, voxelTargetIds, type VoxelLevelId } from '../engine/voxel'
 import type { ProgressData } from '../hooks/useProgress'
+import { loadContent, publishedKey } from '../engine/content'
 
 export type Mode = '2d' | '3d'
 export type Activity = 'challenge' | 'create'
@@ -25,17 +26,18 @@ export interface WorkCreateRoute {
 }
 
 export type WorkRoute = WorkChallengeRoute | WorkCreateRoute
-export type AppRoute = StartRoute | WorkRoute
+export interface AdminRoute { kind: 'admin'; mode: '2d'; activity: 'challenge'; page: 'levels' | 'chapters' | 'arrangement'; levelId?: string }
+export type AppRoute = StartRoute | WorkRoute | AdminRoute
 
 const valid2dLevels = new Set(levels.map(l => l.id))
 const valid3dLevels = new Set(voxelTargetIds)
 
 export function isValid2dLevel(id: string): boolean {
-  return valid2dLevels.has(id)
+  try { const content=loadContent(publishedKey); return valid2dLevels.has(id) || (content.placements.some(p=>p.levelId===id) && content.levels.some(l => l.id === id && l.mode === '2d' && !l.archived)) } catch { return valid2dLevels.has(id) }
 }
 
 export function isValid3dLevel(id: string): id is VoxelLevelId {
-  return valid3dLevels.has(id as VoxelLevelId)
+  try { const content=loadContent(publishedKey); return valid3dLevels.has(id as VoxelLevelId) || (content.placements.some(p=>p.levelId===id) && content.levels.some(l => l.id === id && l.mode === '3d' && !l.archived)) } catch { return valid3dLevels.has(id as VoxelLevelId) }
 }
 
 export function getDefaultStartRoute(progress: ProgressData): StartRoute {
@@ -64,6 +66,7 @@ export function getResumeRoute(progress: ProgressData): WorkRoute {
 }
 
 export function routeToHash(route: AppRoute): string {
+  if (route.kind === 'admin') return `#/admin/${route.page}${route.levelId ? `/${route.levelId}` : ''}`
   if (route.kind === 'start') {
     return `#/start/${route.activity}/${route.mode}`
   }
@@ -82,6 +85,8 @@ export function parseHash(rawHash: string, progress: ProgressData): AppRoute {
   }
 
   const [top, p1, p2, p3] = segments
+
+  if (top === 'admin' && (p1 === 'levels' || p1 === 'chapters' || p1 === 'arrangement')) return { kind: 'admin', mode: '2d', activity: 'challenge', page: p1, ...(p1 === 'levels' && p2 ? { levelId: p2 } : {}) }
 
   if (top === 'start') {
     const activity = (p1 === 'challenge' || p1 === 'create') ? p1 : (progress.mode === '3d' ? (progress.voxelActivity ?? 'create') : (progress.pixelActivity ?? 'challenge'))

@@ -8,6 +8,7 @@ import type { RunnerStatus } from '../runners/types'
 import type { useProjectLibrary } from '../hooks/useProjectLibrary'
 import type { VoxelControls } from '../hooks/useVoxelControls'
 import { initial as initialVoxelView } from '../renderers/voxelGeometry'
+import type { getLevel } from '../engine/content'
 
 export type MenuKey = 'project' | 'edit' | 'reference' | 'view' | 'run' | 'help' | null
 
@@ -26,6 +27,7 @@ interface WorkspaceMenuBarProps {
   selectedPixelRefId: PixelReferenceId
   selectedVoxelRefId: VoxelLevelId
   levelId: string
+  customLevel: ReturnType<typeof getLevel>
   library: ReturnType<typeof useProjectLibrary>
   showOutput: boolean
   showPalette: boolean
@@ -66,6 +68,7 @@ export function WorkspaceMenuBar({
   selectedPixelRefId,
   selectedVoxelRefId,
   levelId,
+  customLevel,
   library,
   showOutput,
   showPalette,
@@ -292,13 +295,13 @@ export function WorkspaceMenuBar({
               <>
                 <div className="menu-section-title">当前挑战信息</div>
                 <div className="menu-info-item">
-                  目标：{is3d ? getVoxelLevel(selectedVoxelRefId).title : (levels.find(l => l.id === levelId)?.title ?? levelId)}
+                  目标：{customLevel?.title ?? (is3d ? getVoxelLevel(selectedVoxelRefId).title : (levels.find(l => l.id === levelId)?.title ?? levelId))}
                 </div>
                 <div className="menu-info-item">
-                  网格尺寸：{is3d ? '17 × 17 × 17 体素' : `${levels.find(l => l.id === levelId)?.radius ? levels.find(l => l.id === levelId)!.radius * 2 + 1 : 11} × ${levels.find(l => l.id === levelId)?.radius ? levels.find(l => l.id === levelId)!.radius * 2 + 1 : 11} 像素`}
+                  网格尺寸：{is3d ? '17 × 17 × 17 体素' : `${(customLevel?.radius ?? levels.find(l => l.id === levelId)?.radius ?? 5) * 2 + 1} × ${(customLevel?.radius ?? levels.find(l => l.id === levelId)?.radius ?? 5) * 2 + 1} 像素`}
                 </div>
                 <div className="menu-info-item subtle">
-                  {is3d ? '三维挑战可通过「编辑」显式载入示例' : '挑战模式不提供参考答案或目标公式'}
+                  {is3d ? (customLevel && !voxelTargetIds.includes(customLevel.id as VoxelLevelId) ? '按完整体素目标严格判定' : '三维挑战可通过「编辑」显式载入示例') : '挑战模式不提供参考答案或目标公式'}
                 </div>
               </>
             )}

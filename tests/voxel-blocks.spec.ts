@@ -138,9 +138,12 @@ test('三维新存档字段逐关往返、旧代码保留、编辑关联与损�
     { voxelEditor: 'cpp' }, { voxelBlocks: [] }, { voxelBlocks: draft(emptyBlocks) },
     { voxelBlocks: { ...draft(), projectId: 'missing' } }, { voxelProjectId: project.id },
     { voxelChallengeEditors: [] }, { voxelChallengeEditors: { 'voxel-cube': 'js' } },
-    { voxelChallengeBlocks: [] }, { voxelChallengeBlocks: { unknown: emptyVoxelBlocks } },
+    { voxelChallengeBlocks: [] }, { voxelChallengeBlocks: { unknown: emptyBlocks } },
     { voxelChallengeBlocks: { 'voxel-cube': emptyBlocks } },
   ]) expect(() => parseProgress(JSON.stringify({ ...value, ...patch }))).toThrow()
+  const unavailable = parseProgress(JSON.stringify({ ...value, voxelCodes: { 'missing-voxel-level': voxelStarter }, voxelPassed: { 'missing-voxel-level': true }, voxelChallengeEditors: { 'missing-voxel-level': 'blocks' }, voxelChallengeBlocks: { 'missing-voxel-level': emptyVoxelBlocks } }))
+  expect(unavailable.voxelCodes!['missing-voxel-level']).toBe(voxelStarter)
+  expect(unavailable.voxelPassed!['missing-voxel-level']).toBe(true)
 })
 
 test('七关默认 Python 和空积木，显式示例逐关通关、成绩共享且编辑结果隔离', async ({ page }) => {

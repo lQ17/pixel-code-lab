@@ -43,7 +43,7 @@ test('三维旧存档只迁移一次，新字段严格校验，空代码与已�
   expect(parseProgress(JSON.stringify({ ...legacy, voxelCodes: { 'voxel-sphere': '', 'voxel-cube': cubeCode } })).voxelCodes)
     .toEqual({ 'voxel-sphere': '', 'voxel-cube': cubeCode })
   for (const invalid of [
-    { voxelActivity: 'unknown' }, { voxelLevelId: 'unknown' }, { voxelCodes: null },
+    { voxelActivity: 'unknown' }, { voxelLevelId: 42 }, { voxelCodes: null },
     { voxelCodes: [] }, { voxelCodes: { 'voxel-cube': false } },
   ]) expect(() => parseProgress(JSON.stringify({ ...legacy, ...invalid }))).toThrow()
 })
