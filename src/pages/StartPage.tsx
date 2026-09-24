@@ -40,6 +40,7 @@ export function StartPage({
   const currentPassed = is3d ? (progress.voxelPassed ?? {}) : progress.passed
   const passedCount = challengeIds.filter(id => currentPassed[id]).length
   const totalCount = challengeIds.length
+  const nextChallengeId = challengeIds.find(id => !currentPassed[id]) ?? challengeIds[0]
 
   // 上次工作推导
   const resumeRoute = getResumeRoute(progress)
@@ -104,28 +105,36 @@ export function StartPage({
             <strong>上次进行：{resumeTitle}</strong>
           </div>
           <button className="resume-action-button" onClick={() => onNavigate(resumeRoute)}>
-            继续上次工作 →
+            <img src="/ui/resume-path.png" alt="" />
+            <span>继续上次工作 →</span>
           </button>
         </section>
 
         {isChallenge ? (
           <section className="start-content challenge-view">
-            <div className="section-head">
-              <div>
+            <div className="section-head challenge-head">
+              <div className="challenge-intro">
                 <span className="micro">{is3d ? '3D VOXEL CHALLENGE' : '2D PIXEL CHALLENGE'}</span>
                 <h2>{is3d ? '3D 体素编程关卡' : '2D 像素编程关卡'}</h2>
-                <p>三关与七关全部开放，编写函数输出图形，匹配目标即可通关。</p>
-              </div>
-              <div className="start-progress-badge">
-                <div className="progress-slots" aria-label={`已通关 ${passedCount} / ${totalCount} 关`}>
-                  {challengeIds.map(id => (
-                    <i key={id} className={currentPassed[id] ? 'filled' : ''} />
-                  ))}
+                <p>{is3d ? '七关' : '三关'}全部开放。编写函数绘出目标，开启下一段像素冒险。</p>
+                <div className="start-progress-badge">
+                  <div className="progress-slots" aria-label={`已通关 ${passedCount} / ${totalCount} 关`}>
+                    {challengeIds.map(id => (
+                      <i key={id} className={currentPassed[id] ? 'filled' : ''} />
+                    ))}
+                  </div>
+                  <strong>
+                    已通关 {passedCount} <em>/ {totalCount}</em>
+                  </strong>
                 </div>
-                <strong>
-                  已通关 {passedCount} <em>/ {totalCount}</em>
-                </strong>
               </div>
+              <button
+                className="start-art-button challenge-art-button"
+                onClick={() => onNavigate({ kind: 'work', mode, activity: 'challenge', levelId: nextChallengeId })}
+              >
+                <img src="/ui/challenge-portal.png" alt="" />
+                <span>开始挑战 →</span>
+              </button>
             </div>
 
             <div className="start-cards-grid">
@@ -190,25 +199,13 @@ export function StartPage({
               </div>
             </div>
 
-            <div className="create-entrance-card">
-              <div className="create-hero">
-                <PixelMark />
-                <div className="create-details">
-                  <h3>进入 {is3d ? '3D 体素' : '2D 像素'} 自由创作工作台</h3>
-                  <p>
-                    {is3d
-                      ? '支持 Python 手写或积木拼装，在 17×17×17 三维空间中用 x、y、z 决定体素颜色，旋转与剖切观察模型。'
-                      : '支持 Python 手写或积木拼装，支持移动原点，自由绘制多彩像素图案。'}
-                  </p>
-                </div>
-              </div>
-              <button
-                className="start-create-button"
-                onClick={() => onNavigate({ kind: 'work', mode, activity: 'create' })}
-              >
-                进入创作工作台 →
-              </button>
-            </div>
+            <button
+              className="start-art-button create-entrance-card"
+              onClick={() => onNavigate({ kind: 'work', mode, activity: 'create' })}
+            >
+              <img src="/ui/create-toolbox.png" alt="" />
+              <span>进入创作工作台 →</span>
+            </button>
           </section>
         )}
       </div>
