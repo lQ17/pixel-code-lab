@@ -4,7 +4,7 @@ import { HelpDialog } from '../components/HelpDialog'
 import { levels } from '../engine/levels'
 import { getVoxelLevel, voxelTargetIds } from '../engine/voxel'
 import type { ProgressData, SaveState } from '../hooks/useProgress'
-import { getResumeRoute, type Activity, type AppRoute, type Mode } from '../navigation/route'
+import { getResumeIssue, getResumeRoute, type Activity, type AppRoute, type Mode } from '../navigation/route'
 import { getLevel, visibleLevels, type ContentPackage } from '../engine/content'
 import { LevelThumbnail } from '../components/LevelThumbnail'
 
@@ -50,6 +50,7 @@ export function StartPage({
 
   // 上次工作推导
   const resumeRoute = getResumeRoute(progress)
+  const resumeIssue = getResumeIssue(progress, content)
   const resumeTitle = (() => {
     if (resumeRoute.mode === '3d') {
       if (resumeRoute.activity === 'create') return '3D 体素 · 自由创作'
@@ -109,11 +110,12 @@ export function StartPage({
         <section className="start-resume-bar">
           <div className="resume-info">
             <span className="micro">RECENT SESSION</span>
-            <strong>上次进行：{resumeTitle}</strong>
+            <strong>上次进行：{resumeIssue ? '关卡暂不可用' : resumeTitle}</strong>
+            {resumeIssue && <span role="status" className="resume-issue">{resumeIssue}请从课程目录选择关卡，原有代码和通关记录会保留。</span>}
           </div>
-          <button className="resume-action-button" onClick={() => onNavigate(resumeRoute)}>
+          <button className="resume-action-button" onClick={() => { if (resumeIssue) { setChapterId(null); setSectionId(null); onNavigate({ kind: 'start', mode: resumeRoute.mode, activity: 'challenge' }) } else onNavigate(resumeRoute) }}>
             <img src="/ui/resume-path.png" alt="" />
-            <span>继续上次工作 →</span>
+            <span>{resumeIssue ? '返回课程目录 →' : '继续上次工作 →'}</span>
           </button>
         </section>
 
@@ -121,6 +123,7 @@ export function StartPage({
           <section className="start-content challenge-view">
             {content.chapters.length > 0 && <div className="course-catalog">
               <div className="section-head"><h2>课程目录</h2><span className="micro">章节 → 小节 → 关卡</span></div>
+              <nav className="course-breadcrumb" aria-label="当前位置"><button onClick={() => { setChapterId(null); setSectionId(null) }}>课程目录</button>{chapterId && <><span> / </span><button onClick={() => setSectionId(null)}>{content.chapters.find(c => c.id === chapterId)?.title}</button></>}{sectionId && <><span> / </span><span>{content.sections.find(s => s.id === sectionId)?.title}</span></>}</nav>
               {!chapterId && content.chapters.filter(c => !c.archived).slice().sort((a,b) => a.order-b.order).map(chapter => <button className="start-card" key={chapter.id} onClick={() => { setChapterId(chapter.id); setSectionId(null) }}><h3>{chapter.title}</h3><p>{chapter.description}</p><span>进入章节 →</span></button>)}
               {chapterId && <><button onClick={() => { setChapterId(null); setSectionId(null) }}>← 全部章节</button><h3>{content.chapters.find(c => c.id === chapterId)?.title}</h3></>}
               {chapterId && !sectionId && content.sections.filter(s => s.chapterId === chapterId && !s.archived).sort((a,b) => a.order-b.order).map(section => <button className="start-card" key={section.id} onClick={() => setSectionId(section.id)}><h3>{section.title}</h3><p>{section.description}</p><span>选择关卡 →</span></button>)}

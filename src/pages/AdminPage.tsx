@@ -15,7 +15,6 @@ import {
   loadContent,
   publishedKey,
   saveContent,
-  validateContent,
   type ContentLevel,
   type ContentPackage,
   type ContentMode,
@@ -31,10 +30,10 @@ import {
 import type { AdminRoute, AppRoute } from "../navigation/route";
 import { parseProgress, STORAGE_KEY } from "../hooks/useProgress";
 import type { Project } from "../engine/projects";
-import { evaluate } from "../engine/evaluate";
 import { LevelThumbnail } from "../components/LevelThumbnail";
 import { PixelPainter } from "./PixelPainter";
 import { AdminStructure } from "./AdminStructure";
+import { changeCount, compareContent, conflictingIds, contentCounts, importBackupKey, inspectReferences, parseImport, previousPublishedKey } from "../engine/contentDelivery";
 import "./AdminPage.css";
 
 const CodeEditor = lazy(() => import("../components/CodeEditor"));
@@ -148,6 +147,13 @@ export function AdminPage({
   const [published, setPublished] = useState<ContentPackage | null>(() => {
     try { return loadContent(publishedKey); } catch { return null; }
   });
+  const [previousPublished, setPreviousPublished] = useState<ContentPackage | null>(() => {
+    try { return localStorage.getItem(previousPublishedKey) ? loadContent(previousPublishedKey) : null; } catch { return null; }
+  });
+  const [importReview, setImportReview] = useState<{ name: string; content: ContentPackage; conflicts: string[] } | null>(null);
+  const [importIssue, setImportIssue] = useState<{ name: string; counts: string; missing: string[]; error: string } | null>(null);
+  const [importBackupAvailable, setImportBackupAvailable] = useState(() => { try { return localStorage.getItem(importBackupKey) !== null; } catch { return false; } });
+  const [showRestoreBackup, setShowRestoreBackup] = useState(false);
   const [notice, setNotice] = useState(authoring.recovered ? "已恢复未保存的制作草稿，请重试保存" : "");
   const [levelSearch, setLevelSearch] = useState("");
   const [levelModeFilter, setLevelModeFilter] = useState<"all" | ContentMode>("all");
@@ -220,10 +226,6 @@ export function AdminPage({
   const [running, setRunning] = useState(false);
   const [runnerStatus, setRunnerStatus] = useState<RunnerStatus>("loading");
   const [runError, setRunError] = useState("");
-  const [tryCode, setTryCode] = useState(
-    initialLevel?.mode === "3d" ? voxelStarter : starterCode,
-  );
-  const [tryResult, setTryResult] = useState("");
   const [color, setColor] = useState(1);
   const [tool, setTool] = useState<"draw" | "dye" | "erase" | "pick">("draw");
   const [slice, setSlice] = useState(0);
@@ -246,7 +248,10 @@ export function AdminPage({
   const draftPayload = JSON.stringify({ mode: levelMode, title, description, source, code, blocks, manual, candidate, programSnapshots, modeDrafts, archived });
   useEffect(() => { latestDraft.current = draftPayload; }, [draftPayload]);
   const targetDirty = editing && (!level || title.trim() !== level.title || description !== level.description || archived !== level.archived || source !== level.source || (source === "manual" ? stamp(manual) !== level.targetColors : (source === "python" ? code !== level.sourceCode : compiled.code !== level.sourceCode || JSON.stringify(blocks) !== JSON.stringify(level.sourceBlocks)) || (candidate !== null && stamp(candidate) !== level.targetColors)));
-  const unapplied = JSON.stringify(studentContent(content)) !== JSON.stringify(published);
+  const studentDraft = useMemo(() => studentContent(content), [content]);
+  const studentBytes = useMemo(() => new TextEncoder().encode(JSON.stringify(studentDraft)).length, [studentDraft]);
+  const unapplied = JSON.stringify(studentDraft) !== JSON.stringify(published);
+  const changes = useMemo(() => compareContent(published ?? emptyContent(), studentDraft), [published, studentDraft]);
 
   useEffect(() => {
     if (!editing) return;
@@ -466,33 +471,6 @@ export function AdminPage({
       if (ticket === runTicket.current) setRunning(false);
     }
   }
-  async function tryLevel() {
-    if (!level || !runner.current || runnerStatus !== "ready") return;
-    const ticket = ++runTicket.current;
-    setTryResult("正在运行…");
-    try {
-      const result = await runner.current.run(
-        tryCode,
-        level.radius,
-        level.mode,
-      );
-      if (ticket !== runTicket.current) return;
-      const score = evaluate(
-        [...level.targetColors].map(Number),
-        result.colors,
-      );
-      setTryResult(
-        `匹配率 ${score.percent.toFixed(1)}%${score.passed ? " · 完全一致" : ""}`,
-      );
-    } catch (error) {
-      if (ticket === runTicket.current)
-        setTryResult(
-          error instanceof RunFailure
-            ? `${error.detail.kind}：${error.detail.message}`
-            : String(error),
-        );
-    }
-  }
   function saveLevel() {
     const currentSource = source === "blocks" ? compiled.code : code;
     const unchangedProgram = level && source === level.source && currentSource === level.sourceCode;
@@ -561,39 +539,98 @@ export function AdminPage({
       setNotice(`已复制关卡「${level.title}」，新 ID：${copy.id}；副本未编排，学生进度独立`);
     }
   }
-  async function importFile(file: File, toPublished = false) {
+  async function importFile(file: File) {
+    let parsed: unknown;
     try {
       if (file.size > 12_000_000) throw new Error("内容包超过 12 MB");
-      const next = validateContent(JSON.parse(await file.text()));
-      if (
-        !window.confirm(
-          `导入将替换${toPublished ? "已应用内容" : "管理草稿"}。请先导出备份，确定继续？`,
-        )
-      )
-        return;
-      saveContent(toPublished ? publishedKey : draftKey, next);
-      if (!toPublished) {
-        setContent(next);
-        onNavigate({ kind: "admin", mode: "2d", activity: "challenge", page: "levels" });
-      }
-      setNotice("导入成功");
+      parsed = JSON.parse(await file.text());
+      const missing = inspectReferences(parsed);
+      if (missing.length) throw new Error(`${missing.length} 处内容引用不存在`);
+      const next = parseImport(parsed);
+      setImportReview({ name: file.name, content: next, conflicts: conflictingIds(content, next) });
+      setImportIssue(null);
+      setNotice("已验证导入文件，请查看范围后确认替换");
     } catch (error) {
-      setNotice(`导入失败：${String(error)}`);
+      setImportReview(null);
+      const data = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+      const count = (key: string) => Array.isArray(data[key]) ? data[key].length : "?";
+      setImportIssue({ name: file.name, counts: `${count("chapters")} 大章、${count("sections")} 小节、${count("levels")} 关卡、${count("placements")} 个编排`, missing: inspectReferences(parsed), error: String(error) });
+      setNotice(`导入校验失败，原管理草稿未修改：${String(error)}`);
     }
+  }
+  function commitImport() {
+    if (!importReview) return;
+    if (targetDirty) { setNotice("当前关卡目标尚未保存，请先保存后再导入"); return; }
+    if (initial.error) { setNotice("原管理草稿无法读取，已保留原数据；请先手动备份或恢复"); return; }
+    try {
+      saveContent(importBackupKey, content);
+      setImportBackupAvailable(true);
+      saveContent(draftKey, importReview.content);
+      setContent(importReview.content);
+      setImportReview(null);
+      setImportIssue(null);
+      setNotice("导入成功；替换前的管理草稿已自动备份，可恢复");
+      onNavigate({ kind: "admin", mode: "2d", activity: "challenge", page: "levels" });
+    } catch (error) {
+      setNotice(`导入写入失败，原管理草稿保持不变：${String(error)}`);
+    }
+  }
+  function restoreImportBackup() {
+    if (targetDirty) { setNotice("当前关卡目标尚未保存，请先保存后再恢复备份"); return; }
+    try {
+      const backup = loadContent(importBackupKey);
+      saveContent(draftKey, backup);
+      setContent(backup);
+      setShowRestoreBackup(false);
+      setNotice("已恢复导入前的管理草稿");
+      onNavigate({ kind: "admin", mode: "2d", activity: "challenge", page: "levels" });
+    } catch (error) { setNotice(`恢复备份失败，当前管理草稿未修改：${String(error)}`); }
   }
   function apply() {
     if (targetDirty) {
       setNotice("当前关卡目标尚未保存，请先保存关卡目标");
       return;
     }
+    let oldPreviousRaw: string | null = null;
+    let previousWritten = false;
     try {
-      const student = studentContent(content);
-      saveContent(publishedKey, student);
-      setPublished(student);
-      setNotice("已应用到本机挑战");
+      if (!published && localStorage.getItem(publishedKey) !== null) throw new Error("现有应用内容无法读取，请先备份并修复");
+      oldPreviousRaw = localStorage.getItem(previousPublishedKey);
+      const before = published ?? emptyContent();
+      saveContent(previousPublishedKey, before);
+      previousWritten = true;
+      saveContent(publishedKey, studentDraft);
+      setPreviousPublished(before);
+      setPublished(studentDraft);
+      setNotice(`已应用到本机挑战；包含 ${changeCount(changes)} 项差异，可回退上一次应用`);
     } catch (error) {
+      if (previousWritten) {
+        try {
+          if (oldPreviousRaw === null) localStorage.removeItem(previousPublishedKey);
+          else localStorage.setItem(previousPublishedKey, oldPreviousRaw);
+        } catch (restoreError) {
+          setNotice(`应用失败，现有学生内容未修改；上次应用快照恢复失败：${String(restoreError)}`);
+          return;
+        }
+      }
       setNotice(`应用失败：${String(error)}`);
     }
+  }
+  function rollback() {
+    if (!previousPublished) return;
+    try {
+      const current = loadContent(publishedKey);
+      saveContent(previousPublishedKey, current);
+      try {
+        saveContent(publishedKey, previousPublished);
+      } catch (error) {
+        saveContent(previousPublishedKey, previousPublished);
+        throw error;
+      }
+      setPublished(previousPublished);
+      setPreviousPublished(current);
+      setNotice("已回退到上一次应用；管理草稿未修改，可再次应用");
+    } catch (error) { setNotice(`回退失败，当前应用内容未修改：${String(error)}`); }
   }
   const allIds = [
     ...content.levels.map((l) => l.id),
@@ -777,7 +814,21 @@ export function AdminPage({
           />
         </label>
         <button onClick={apply}>应用到本机挑战</button>
+        <button disabled={!previousPublished} onClick={rollback}>回退上一次应用</button>
+        {importBackupAvailable && <button onClick={() => setShowRestoreBackup(true)}>恢复导入前管理草稿</button>}
       </div>
+      <div className="admin-delivery-review">
+        <h3>应用差异 · {changeCount(changes)} 项</h3>
+        {([
+          ["新增关卡", changes.added], ["修改关卡", changes.modified], ["归档关卡", changes.archived],
+          ["恢复关卡", changes.restored], ["删除关卡", changes.removed], ["加入目录", changes.placed], ["移出目录", changes.unplaced],
+          ["移动或排序", changes.moved], ["目录调整", changes.directory],
+        ] as [string, string[]][]).map(([label, items]) => <details key={label}><summary>{label}：{items.length}</summary>{items.length ? <ul>{items.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p>无</p>}</details>)}
+        <p className="admin-hint">待应用学生内容 JSON 约 {(studentBytes / 1024).toFixed(1)} KiB。应用只影响本机学生内容；上一次应用快照可回退，管理草稿保持独立。</p>
+      </div>
+      {importReview && <div className="admin-impact" role="dialog" aria-label="导入审阅"><strong>导入审阅：{importReview.name}</strong><p>新文件：{contentCounts(importReview.content).chapters} 大章、{contentCounts(importReview.content).sections} 小节、{contentCounts(importReview.content).levels} 自定义关卡、{contentCounts(importReview.content).placements} 个编排。当前管理草稿：{contentCounts(content).chapters} 大章、{contentCounts(content).sections} 小节、{contentCounts(content).levels} 自定义关卡。</p><p>同 ID 内容冲突：{importReview.conflicts.length} 关{importReview.conflicts.length ? `（${importReview.conflicts.slice(0, 8).join("、")}）` : ""}。缺失引用：0（已通过完整校验）。确认后先自动备份当前管理草稿，再整包替换。</p><button onClick={commitImport}>确认备份并导入</button><button onClick={() => setImportReview(null)}>取消导入</button></div>}
+      {importIssue && <div className="admin-impact" role="alert"><strong>导入校验未通过：{importIssue.name}</strong><p>文件包含 {importIssue.counts}；{importIssue.error}。原管理草稿未修改。</p>{importIssue.missing.length > 0 && <ul>{importIssue.missing.slice(0, 20).map((item, index) => <li key={index}>{item}</li>)}</ul>}<button onClick={() => setImportIssue(null)}>关闭</button></div>}
+      {showRestoreBackup && <div className="admin-impact" role="dialog" aria-label="恢复导入备份"><strong>恢复导入前的管理草稿</strong><p>这会替换当前管理草稿；本机学生应用内容不变。建议先导出当前草稿。</p><button onClick={restoreImportBackup}>确认恢复</button><button onClick={() => setShowRestoreBackup(false)}>取消</button></div>}
       </details>
       {(route.page === "chapters" || route.page === "arrangement") && (
         <AdminStructure page={route.page} content={content} change={change} setNotice={setNotice} />
@@ -1179,23 +1230,9 @@ export function AdminPage({
       )}
       {editing && level && (
         <section className="admin-try">
-          <h2>独立试做</h2>
-          <p>在这里检查目标判定，不写入学生代码或通关记录。</p>
-          <textarea
-            aria-label="试做 Python 代码"
-            value={tryCode}
-            onChange={(e) => {
-              setTryCode(e.target.value);
-              setTryResult("");
-            }}
-          />
-          <button
-            disabled={runnerStatus !== "ready"}
-            onClick={() => void tryLevel()}
-          >
-            运行试做
-          </button>
-          {tryResult && <p role="status">{tryResult}</p>}
+          <h2>学生工作台试做</h2>
+          <p>使用已保存的管理目标，在独立工作台中试做 Python 或积木；代码、作品和通关不写入学生存档。</p>
+          <button onClick={() => { if (targetDirty) { setNotice("当前关卡目标尚未保存，请先保存目标后试做"); return; } safeNavigate({ kind: "admin", mode: "2d", activity: "challenge", page: "preview", levelId: level.id }); }}>打开学生工作台试做</button>
         </section>
       )}
     </main>

@@ -1,7 +1,7 @@
 import { levels } from '../engine/levels'
 import { defaultVoxelId, voxelTargetIds, type VoxelLevelId } from '../engine/voxel'
 import type { ProgressData } from '../hooks/useProgress'
-import { loadContent, publishedKey } from '../engine/content'
+import { loadContent, publishedKey, type ContentPackage } from '../engine/content'
 
 export type Mode = '2d' | '3d'
 export type Activity = 'challenge' | 'create'
@@ -26,7 +26,7 @@ export interface WorkCreateRoute {
 }
 
 export type WorkRoute = WorkChallengeRoute | WorkCreateRoute
-export interface AdminRoute { kind: 'admin'; mode: '2d'; activity: 'challenge'; page: 'levels' | 'chapters' | 'arrangement'; levelId?: string }
+export interface AdminRoute { kind: 'admin'; mode: '2d'; activity: 'challenge'; page: 'levels' | 'chapters' | 'arrangement' | 'preview'; levelId?: string }
 export type AppRoute = StartRoute | WorkRoute | AdminRoute
 
 const valid2dLevels = new Set(levels.map(l => l.id))
@@ -65,6 +65,24 @@ export function getResumeRoute(progress: ProgressData): WorkRoute {
   }
 }
 
+export function getResumeIssue(progress: ProgressData, content: ContentPackage): string | null {
+  const mode = progress.mode ?? '2d'
+  const activity = mode === '3d' ? progress.voxelActivity ?? 'create' : progress.pixelActivity ?? 'challenge'
+  if (activity === 'create') return null
+  const id = mode === '3d' ? progress.voxelLevelId ?? defaultVoxelId : progress.levelId
+  if ((mode === '3d' ? valid3dLevels : valid2dLevels).has(id)) return null
+  const level = content.levels.find(item => item.id === id)
+  if (!level) return `上次关卡（${id}）不在当前内容包中。`
+  if (level.archived) return `上次关卡「${level.title}」已归档。`
+  const placement = content.placements.find(item => item.levelId === id)
+  if (!placement) return `上次关卡「${level.title}」已移出课程目录。`
+  const section = content.sections.find(item => item.id === placement.sectionId)
+  const chapter = content.chapters.find(item => item.id === section?.chapterId)
+  if (!section || !chapter) return `上次关卡「${level.title}」的目录已缺失。`
+  if (section.archived || chapter.archived) return `上次关卡「${level.title}」所在目录已归档。`
+  return null
+}
+
 export function routeToHash(route: AppRoute): string {
   if (route.kind === 'admin') return `#/admin/${route.page}${route.levelId ? `/${route.levelId}` : ''}`
   if (route.kind === 'start') {
@@ -86,7 +104,7 @@ export function parseHash(rawHash: string, progress: ProgressData): AppRoute {
 
   const [top, p1, p2, p3] = segments
 
-  if (top === 'admin' && (p1 === 'levels' || p1 === 'chapters' || p1 === 'arrangement')) return { kind: 'admin', mode: '2d', activity: 'challenge', page: p1, ...(p1 === 'levels' && p2 ? { levelId: p2 } : {}) }
+  if (top === 'admin' && (p1 === 'levels' || p1 === 'chapters' || p1 === 'arrangement' || p1 === 'preview')) return { kind: 'admin', mode: '2d', activity: 'challenge', page: p1, ...((p1 === 'levels' || p1 === 'preview') && p2 ? { levelId: p2 } : {}) }
 
   if (top === 'start') {
     const activity = (p1 === 'challenge' || p1 === 'create') ? p1 : (progress.mode === '3d' ? (progress.voxelActivity ?? 'create') : (progress.pixelActivity ?? 'challenge'))

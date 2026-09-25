@@ -35,7 +35,7 @@ test("手工创建二维关卡、编排并在学生端挑战", async ({ page, co
     .click();
   await page.getByRole("button", { name: "应用到本机挑战" }).click();
   await page.getByRole("button", { name: "返回学生入口" }).click();
-  await expect(page.getByText("课程目录")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "课程目录" })).toBeVisible();
   await page.getByRole("button", { name: /第一章/ }).click();
   await page.getByRole("button", { name: /坐标基础/ }).click();
   await page.getByRole("button", { name: /手工星点/ }).click();
@@ -221,11 +221,16 @@ test("Python 生成目标后修改代码不能沿用旧运行结果", async ({
   await expect(page.getByText("当前非空格：1")).toBeVisible();
   await page.getByRole("button", { name: "保存为关卡目标" }).click();
   await expect(page.getByRole("heading", { name: "编辑关卡" })).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "试做 Python 代码" })
-    .fill("def pixel(x, y):\n    return 1 if x == 0 and y == 0 else 0");
-  await page.getByRole("button", { name: "运行试做" }).click();
-  await expect(page.getByText("匹配率 100.0% · 完全一致")).toBeVisible();
+  const before = await page.evaluate(() => localStorage.getItem("pixel-code-lab.progress"));
+  await page.getByRole("button", { name: "打开学生工作台试做" }).click();
+  await expect(page.getByText(/管理员试做/)).toBeVisible();
+  await page.locator(".editor-zone .monaco-editor").click();
+  await page.evaluate(() => navigator.clipboard.writeText("def pixel(x, y):\n    return 1 if x == 0 and y == 0 else 0\n"));
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("ControlOrMeta+V");
+  await runCode(page);
+  await expect(page.getByTestId("score")).toContainText("100.0%");
+  expect(await page.evaluate(() => localStorage.getItem("pixel-code-lab.progress"))).toBe(before);
 });
 
 test("自定义三维关卡使用完整体素目标判定", async ({ page, context }) => {

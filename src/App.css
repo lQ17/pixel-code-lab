@@ -248,3 +248,5 @@ h1{font-size:21px;letter-spacing:3px;line-height:1.5}.brand .micro{font-size:9px
   .start-art-button span{font-size:14px}
 }
 @media(prefers-reduced-motion:reduce){.start-art-button,.start-page .resume-action-button{transition:none}}
+.workspace-preview-banner{padding:7px 20px;background:#225040;color:#d9fff3;border-bottom:1px solid #6aefce;font-size:13px}
+.resume-issue{display:block;color:#ffd69b;font-size:12px;margin-top:4px}.course-breadcrumb{display:flex;align-items:center;gap:5px;color:#9fc6d6;font-size:13px;flex-wrap:wrap}.course-breadcrumb button{background:none;border:0;color:#9fd9e7;cursor:pointer;padding:3px 5px}.course-breadcrumb button:hover{text-decoration:underline}

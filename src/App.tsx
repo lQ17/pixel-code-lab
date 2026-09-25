@@ -20,6 +20,7 @@ import { WorkspacePage, type Work } from './pages/WorkspacePage'
 import './App.css'
 import { getLevel, loadContent, publishedKey, emptyContent } from './engine/content'
 import { AdminPage } from './pages/AdminPage'
+import { AdminPreviewPage } from './pages/AdminPreviewPage'
 
 export default function App() {
   const [content, setContent] = useState(() => { try { return loadContent(publishedKey) } catch { return emptyContent() } })
@@ -426,7 +427,9 @@ export default function App() {
   }
 
   // 渲染分发
-  if (route.kind === 'admin') return <AdminPage key={`${route.page}-${route.levelId ?? ''}`} route={route} onNavigate={navigateTo} />
+  if (route.kind === 'admin') return route.page === 'preview'
+    ? <AdminPreviewPage key={route.levelId ?? ''} levelId={route.levelId ?? ''} onNavigate={navigateTo} />
+    : <AdminPage key={`${route.page}-${route.levelId ?? ''}`} route={route} onNavigate={navigateTo} />
   if (route.kind === 'start') {
     return (
       <StartPage

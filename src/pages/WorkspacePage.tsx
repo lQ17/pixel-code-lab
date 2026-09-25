@@ -31,6 +31,7 @@ export type Work = {
 }
 
 interface WorkspacePageProps {
+  preview?: boolean
   mode: '2d' | '3d'
   isCreation: boolean
   isBlocks: boolean
@@ -83,6 +84,7 @@ interface WorkspacePageProps {
 
 export function WorkspacePage(props: WorkspacePageProps) {
   const {
+    preview,
     mode,
     isCreation,
     isBlocks,
@@ -196,11 +198,12 @@ export function WorkspacePage(props: WorkspacePageProps) {
 
   return (
     <main className="arcade workspace-page">
+      {preview && <div className="workspace-preview-banner" role="status">管理员试做 · 使用未应用的管理关卡目标 · 代码、作品与通关不写入学生存档</div>}
       {/* 极简顶栏 */}
       <header className="workspace-header">
         <div className="header-left">
-          <button className="back-start-button" onClick={onBackToStart} title="返回入口页">
-            <span aria-hidden="true">←</span> 返回入口
+          <button className="back-start-button" onClick={onBackToStart} title={preview ? "返回关卡编辑" : "返回入口页"}>
+            <span aria-hidden="true">←</span> {preview ? "返回关卡编辑" : "返回入口"}
           </button>
           <div className="workspace-identity">
             <PixelMark />
