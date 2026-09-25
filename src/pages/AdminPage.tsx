@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   compileBlocks,
   emptyBlocksFor,
+  parseBlocks,
   type BlocksDocument,
 } from "../blocks/model";
 import { useVoxelControls } from "../hooks/useVoxelControls";
@@ -32,6 +33,7 @@ import { parseProgress, STORAGE_KEY } from "../hooks/useProgress";
 import type { Project } from "../engine/projects";
 import { evaluate } from "../engine/evaluate";
 import { LevelThumbnail } from "../components/LevelThumbnail";
+import { PixelPainter } from "./PixelPainter";
 import "./AdminPage.css";
 
 const CodeEditor = lazy(() => import("../components/CodeEditor"));
@@ -42,6 +44,8 @@ const makeId = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const stamp = (values: number[]) => values.join("");
 const index3 = (x: number, y: number, z: number) =>
   (z + voxelRadius) * 289 + (voxelRadius - y) * 17 + x + voxelRadius;
+type ProgramSnapshots = Partial<Record<"python" | "blocks", { code: string; colors: number[] }>>;
+type ModeDraft = { source: ContentSource; code: string; blocks: BlocksDocument; manual: number[]; candidate: number[] | null; programSnapshots: ProgramSnapshots };
 
 function download(name: string, value: string) {
   const url = URL.createObjectURL(
@@ -54,125 +58,13 @@ function download(name: string, value: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function PixelPainter({
-  colors,
-  radius,
-  color,
-  tool,
-  onStroke,
-}: {
-  colors: number[];
-  radius: number;
-  color: number;
-  tool: "draw" | "erase" | "pick";
-  onStroke: (indices: number[], value: number) => void;
-}) {
-  const side = radius * 2 + 1;
-  const [zoom, setZoom] = useState(1);
-  const drawing = useRef<number[]>([]);
-  const pointerId = useRef<number | null>(null);
-  const at = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.floor(((event.clientX - rect.left) / rect.width) * side);
-    const y = Math.floor(((event.clientY - rect.top) / rect.height) * side);
-    return x >= 0 && y >= 0 && x < side && y < side ? y * side + x : -1;
-  };
-  const add = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const next = at(event);
-    if (next < 0 || tool === "pick") return;
-    const previous = drawing.current.at(-1);
-    if (previous === undefined) {
-      drawing.current.push(next);
-      return;
-    }
-    const px = previous % side,
-      py = Math.floor(previous / side),
-      nx = next % side,
-      ny = Math.floor(next / side);
-    const steps = Math.max(Math.abs(nx - px), Math.abs(ny - py));
-    for (let i = 1; i <= steps; i++)
-      drawing.current.push(
-        Math.round(py + ((ny - py) * i) / steps) * side +
-          Math.round(px + ((nx - px) * i) / steps),
-      );
-  };
-  const finish = () => {
-    if (drawing.current.length)
-      onStroke([...new Set(drawing.current)], tool === "erase" ? 0 : color);
-    drawing.current = [];
-    pointerId.current = null;
-  };
-  return (
-    <div className="admin-pixel-editor">
-      <div className="admin-row">
-        <button
-          onClick={() => setZoom((v) => Math.max(0.5, v / 1.25))}
-          aria-label="缩小网格"
-        >
-          －
-        </button>
-        <span>{Math.round(zoom * 100)}%</span>
-        <button
-          onClick={() => setZoom((v) => Math.min(4, v * 1.25))}
-          aria-label="放大网格"
-        >
-          ＋
-        </button>
-        <button onClick={() => setZoom(1)}>重置缩放</button>
-      </div>
-      <div className="admin-pixel-scroll">
-        <canvas
-          className="admin-pixel-canvas"
-          width={side * 24}
-          height={side * 24}
-          aria-label="手动像素画布"
-          style={{
-            width: `${side * 24 * zoom}px`,
-            backgroundColor: "#172a36",
-            backgroundImage: `linear-gradient(#315064 1px,transparent 1px),linear-gradient(90deg,#315064 1px,transparent 1px)`,
-            backgroundSize: `${100 / side}% ${100 / side}%`,
-          }}
-          ref={(element) => {
-            if (!element) return;
-            const ctx = element.getContext("2d");
-            if (!ctx) return;
-            const cell = element.width / side;
-            ctx.clearRect(0, 0, element.width, element.height);
-            colors.forEach((c, i) => {
-              if (!c) return;
-              ctx.fillStyle = palette[c];
-              ctx.fillRect(
-                (i % side) * cell,
-                Math.floor(i / side) * cell,
-                cell,
-                cell,
-              );
-            });
-          }}
-          onPointerDown={(event) => {
-            if (event.button !== 0) return;
-            if (tool === "pick") {
-              const i = at(event);
-              if (i >= 0) onStroke([i], -colors[i] - 1);
-              return;
-            }
-            pointerId.current = event.pointerId;
-            event.currentTarget.setPointerCapture(event.pointerId);
-            drawing.current = [];
-            add(event);
-          }}
-          onPointerMove={(event) => {
-            if (pointerId.current === event.pointerId) add(event);
-          }}
-          onPointerUp={finish}
-          onPointerCancel={() => {
-            drawing.current = [];
-            pointerId.current = null;
-          }}
-        />
-      </div>
-    </div>
-  );
+function studentContent(value: ContentPackage): ContentPackage {
+  const student = structuredClone(value);
+  student.levels.forEach((level) => {
+    delete level.sourceCode;
+    delete level.sourceBlocks;
+  });
+  return student;
 }
 
 export function AdminPage({
@@ -197,9 +89,10 @@ export function AdminPage({
     if (route.page !== "levels" || !route.levelId)
       return { data: null, error: "" };
     try {
-      const raw = localStorage.getItem(
-        `pixel-code-lab.authoring.${route.levelId}`,
-      );
+      const key = `pixel-code-lab.authoring.${route.levelId}`;
+      let recovery: string | null = null;
+      try { recovery = sessionStorage.getItem(`${key}.recovery`); } catch { /* Optional recovery storage. */ }
+      const raw = recovery ?? localStorage.getItem(key);
       if (!raw) return { data: null, error: "" };
       const data = JSON.parse(raw) as {
         mode: ContentMode;
@@ -210,6 +103,8 @@ export function AdminPage({
         blocks: BlocksDocument;
         manual: number[];
         candidate: number[] | null;
+        programSnapshots?: ProgramSnapshots;
+        modeDrafts?: Partial<Record<ContentMode, ModeDraft>>;
         archived: boolean;
       };
       if (
@@ -223,10 +118,20 @@ export function AdminPage({
         data.manual.some((c) => !Number.isInteger(c) || c < 0 || c > 8) ||
         (data.candidate !== null &&
           (!Array.isArray(data.candidate) ||
-            data.candidate.length !== data.manual.length))
+            data.candidate.length !== data.manual.length ||
+            data.candidate.some((c) => !Number.isInteger(c) || c < 0 || c > 8))) ||
+        typeof data.archived !== "boolean"
       )
         throw new Error("制作草稿无效");
-      return { data, error: "" };
+      data.blocks = parseBlocks(data.blocks, data.mode);
+      for (const mode of ["2d", "3d"] as const) {
+        const draft = data.modeDrafts?.[mode];
+        if (!draft) continue;
+        const size = mode === "2d" ? 441 : 4913;
+        if (!["manual", "python", "blocks"].includes(draft.source) || typeof draft.code !== "string" || !Array.isArray(draft.manual) || draft.manual.length !== size || draft.manual.some((v) => !Number.isInteger(v) || v < 0 || v > 8) || (draft.candidate !== null && (!Array.isArray(draft.candidate) || draft.candidate.length !== size || draft.candidate.some((v) => !Number.isInteger(v) || v < 0 || v > 8)))) throw new Error("另一维度制作草稿无效");
+        draft.blocks = parseBlocks(draft.blocks, mode);
+      }
+      return { data, error: "", recovered: !!recovery };
     } catch (error) {
       return {
         data: null,
@@ -237,7 +142,12 @@ export function AdminPage({
   const [storageError, setStorageError] = useState(
     initial.error || authoring.error,
   );
-  const [notice, setNotice] = useState("");
+  const [draftStatus, setDraftStatus] = useState<"pending" | "saved" | "failed">("saved");
+  const [failedContent, setFailedContent] = useState<ContentPackage | null>(null);
+  const [published, setPublished] = useState<ContentPackage | null>(() => {
+    try { return loadContent(publishedKey); } catch { return null; }
+  });
+  const [notice, setNotice] = useState(authoring.recovered ? "已恢复未保存的制作草稿，请重试保存" : "");
   const [selectedChapter, setSelectedChapter] = useState(
     content.chapters[0]?.id ?? "",
   );
@@ -295,6 +205,19 @@ export function AdminPage({
   const [candidate, setCandidate] = useState<number[] | null>(
     authoring.data?.candidate ?? null,
   );
+  const [programSnapshots, setProgramSnapshots] = useState<ProgramSnapshots>(() => {
+    const saved = authoring.data?.programSnapshots;
+    const valid = (entry: unknown): entry is { code: string; colors: number[] } => {
+      if (!entry || typeof entry !== "object") return false;
+      const item = entry as { code?: unknown; colors?: unknown };
+      return typeof item.code === "string" && Array.isArray(item.colors) && item.colors.length === (levelMode === "2d" ? 441 : 4913) && item.colors.every((value) => Number.isInteger(value) && value >= 0 && value <= 8);
+    };
+    const snapshots: ProgramSnapshots = {};
+    if (valid(saved?.python)) snapshots.python = saved!.python;
+    if (valid(saved?.blocks)) snapshots.blocks = saved!.blocks;
+    return snapshots;
+  });
+  const [modeDrafts, setModeDrafts] = useState<Partial<Record<ContentMode, ModeDraft>>>(authoring.data?.modeDrafts ?? {});
   const [running, setRunning] = useState(false);
   const [runnerStatus, setRunnerStatus] = useState<RunnerStatus>("loading");
   const [runError, setRunError] = useState("");
@@ -303,22 +226,31 @@ export function AdminPage({
   );
   const [tryResult, setTryResult] = useState("");
   const [color, setColor] = useState(1);
-  const [tool, setTool] = useState<"draw" | "erase" | "pick">("draw");
+  const [tool, setTool] = useState<"draw" | "dye" | "erase" | "pick">("draw");
   const [slice, setSlice] = useState(0);
   const [history, setHistory] = useState<number[][]>([]);
   const [future, setFuture] = useState<number[][]>([]);
   const [archived, setArchived] = useState(
     authoring.data?.archived ?? initialLevel?.archived ?? false,
   );
+  const [expanded, setExpanded] = useState(false);
+  const [targetExpanded, setTargetExpanded] = useState(false);
   const runner = useRef<PythonRunner | null>(null);
   const runTicket = useRef(0);
   const savedNew = useRef(false);
+  const latestDraft = useRef("");
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controls = useVoxelControls(voxelRadius);
   const level = content.levels.find((l) => l.id === route.levelId);
   const compiled = useMemo(() => compileBlocks(blocks), [blocks]);
   const editing = route.page === "levels" && !!route.levelId;
+  const draftPayload = JSON.stringify({ mode: levelMode, title, description, source, code, blocks, manual, candidate, programSnapshots, modeDrafts, archived });
+  useEffect(() => { latestDraft.current = draftPayload; }, [draftPayload]);
+  const targetDirty = editing && (!level || title.trim() !== level.title || description !== level.description || archived !== level.archived || source !== level.source || (source === "manual" ? stamp(manual) !== level.targetColors : (source === "python" ? code !== level.sourceCode : compiled.code !== level.sourceCode || JSON.stringify(blocks) !== JSON.stringify(level.sourceBlocks)) || (candidate !== null && stamp(candidate) !== level.targetColors)));
+  const unapplied = JSON.stringify(studentContent(content)) !== JSON.stringify(published);
 
   useEffect(() => {
+    if (!editing) return;
     const instance = new PythonRunner((status) => setRunnerStatus(status));
     const ticketRef = runTicket;
     runner.current = instance;
@@ -326,43 +258,77 @@ export function AdminPage({
       ticketRef.current++;
       instance.dispose();
     };
-  }, []);
-  useEffect(() => {
-    if (!editing || storageError || savedNew.current) return;
+  }, [editing]);
+  const saveAuthoring = useCallback(() => {
+    if (!editing || savedNew.current || initial.error || authoring.error) return false;
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = null;
     try {
-      localStorage.setItem(
-        `pixel-code-lab.authoring.${route.levelId}`,
-        JSON.stringify({
-          mode: levelMode,
-          title,
-          description,
-          source,
-          code,
-          blocks,
-          manual,
-          candidate,
-          archived,
-        }),
-      );
+      const key = `pixel-code-lab.authoring.${route.levelId}`;
+      localStorage.setItem(key, latestDraft.current);
+      try { sessionStorage.removeItem(`${key}.recovery`); } catch { /* Main copy is saved. */ }
+      setDraftStatus("saved");
+      setStorageError("");
+      return true;
     } catch (error) {
-      queueMicrotask(() =>
-        setStorageError(`制作草稿保存失败：${String(error)}`),
-      );
+      try { sessionStorage.setItem(`pixel-code-lab.authoring.${route.levelId}.recovery`, latestDraft.current); } catch { /* Export remains available. */ }
+      setDraftStatus("failed");
+      setStorageError(`制作草稿保存失败：${String(error)}`);
+      return false;
     }
-  }, [
-    editing,
-    storageError,
-    route.levelId,
-    levelMode,
-    title,
-    description,
-    source,
-    code,
-    blocks,
-    manual,
-    candidate,
-    archived,
-  ]);
+  }, [editing, initial.error, authoring.error, route.levelId]);
+  function safeNavigate(next: AppRoute) {
+    if (editing && !savedNew.current && (initial.error || authoring.error || draftStatus !== "saved") && !saveAuthoring()) {
+      setNotice("制作草稿尚未保存，请重试或导出后再离开");
+      return;
+    }
+    onNavigate(next);
+  }
+  useEffect(() => {
+    if (!editing || savedNew.current || initial.error || authoring.error) return;
+    setDraftStatus("pending");
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(saveAuthoring, 400);
+    return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
+  // Save is scheduled for each draft change; the latest snapshot is kept in latestDraft.
+  }, [editing, route.levelId, draftPayload, initial.error, authoring.error, saveAuthoring]);
+  useEffect(() => {
+    const flush = (event?: BeforeUnloadEvent) => {
+      if (!editing || savedNew.current || initial.error || authoring.error || !draftTimer.current) return;
+      clearTimeout(draftTimer.current);
+      const key = `pixel-code-lab.authoring.${route.levelId}`;
+      try { localStorage.setItem(key, latestDraft.current); }
+      catch {
+        try { sessionStorage.setItem(`${key}.recovery`, latestDraft.current); }
+        catch { if (event) { event.preventDefault(); event.returnValue = ""; } }
+      }
+    };
+    window.addEventListener("beforeunload", flush);
+    return () => { flush(); window.removeEventListener("beforeunload", flush); };
+  }, [editing, route.levelId, initial.error, authoring.error]);
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && (expanded || targetExpanded)) { setExpanded(false); setTargetExpanded(false); return; }
+      if (source !== "manual" || !(event.ctrlKey || event.metaKey)) return;
+      if ((event.target as Element | null)?.closest("input, textarea, [contenteditable], .monaco-editor, .blocklySvg")) return;
+      const undo = event.key.toLowerCase() === "z" && !event.shiftKey;
+      const redo = event.key.toLowerCase() === "y" || (event.key.toLowerCase() === "z" && event.shiftKey);
+      if (undo && history.length) {
+        event.preventDefault();
+        setFuture((items) => [manual, ...items]);
+        setManual(history.at(-1)!);
+        setHistory((items) => items.slice(0, -1));
+      } else if (redo && future.length) {
+        event.preventDefault();
+        setHistory((items) => [...items, manual]);
+        setManual(future[0]);
+        setFuture((items) => items.slice(1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, expanded, targetExpanded, source, history, future, manual]);
 
   function change(next: ContentPackage) {
     if (storageError) {
@@ -371,13 +337,26 @@ export function AdminPage({
     }
     try {
       saveContent(draftKey, next);
+      setFailedContent(null);
       setContent(next);
       setNotice("管理草稿已保存");
       return true;
     } catch (error) {
+      setFailedContent(next);
       setStorageError(`保存失败：${String(error)}`);
       return false;
     }
+  }
+  function retryContent() {
+    const pending = failedContent;
+    if (!pending) return;
+    try {
+      saveContent(draftKey, pending);
+      setFailedContent(null);
+      setContent(pending);
+      setStorageError("");
+      setNotice("管理草稿已保存");
+    } catch (error) { setStorageError(`保存失败：${String(error)}`); }
   }
   function updateManual(next: number[]) {
     setHistory((h) => [...h.slice(-99), manual]);
@@ -396,13 +375,31 @@ export function AdminPage({
   }
   function setMode(mode: ContentMode) {
     if (mode === levelMode || level) return;
+    runTicket.current++;
+    runner.current?.stop();
+    setRunning(false);
+    setModeDrafts((previous) => ({ ...previous, [levelMode]: { source, code, blocks, manual, candidate, programSnapshots } }));
+    const restored = modeDrafts[mode];
     setLevelMode(mode);
-    setCode(mode === "2d" ? starterCode : voxelStarter);
-    setBlocks(emptyBlocksFor(mode));
-    setManual([...blank(mode)].map(Number));
-    setCandidate(null);
+    setSource(restored?.source ?? "manual");
+    setCode(restored?.code ?? (mode === "2d" ? starterCode : voxelStarter));
+    setBlocks(restored?.blocks ?? emptyBlocksFor(mode));
+    setManual(restored?.manual ?? [...blank(mode)].map(Number));
+    setCandidate(restored?.candidate ?? null);
+    setProgramSnapshots(restored?.programSnapshots ?? {});
+    setTool("draw");
     setHistory([]);
     setFuture([]);
+  }
+  function chooseSource(next: ContentSource) {
+    if (next === source) return;
+    runTicket.current++;
+    runner.current?.stop();
+    setRunning(false);
+    setSource(next);
+    const sourceCode = next === "python" ? code : next === "blocks" ? compiled.code : "";
+    const previous = next === "python" || next === "blocks" ? programSnapshots[next] : undefined;
+    setCandidate(previous?.code === sourceCode ? previous.colors : null);
   }
   function copyProject() {
     const selected = projects.find(
@@ -429,6 +426,7 @@ export function AdminPage({
         : [...blank(selected.mode)].map(Number),
     );
     setCandidate(project.preview ? [...project.preview].map(Number) : null);
+    setProgramSnapshots(project.preview ? { [project.editor === "blocks" ? "blocks" : "python"]: { code: project.code, colors: [...project.preview].map(Number) } } : {});
     setHistory([]);
     setFuture([]);
     setNotice(
@@ -454,7 +452,10 @@ export function AdminPage({
         levelMode === "2d" ? 10 : 8,
         levelMode,
       );
-      if (ticket === runTicket.current) setCandidate(result.colors);
+      if (ticket === runTicket.current) {
+        setCandidate(result.colors);
+        if (source !== "manual") setProgramSnapshots((previous) => ({ ...previous, [source]: { code: sourceCode, colors: result.colors } }));
+      }
     } catch (error) {
       if (ticket === runTicket.current)
         setRunError(
@@ -505,6 +506,10 @@ export function AdminPage({
       setNotice("请先成功运行，再保存目标");
       return;
     }
+    if (!saveAuthoring()) {
+      setNotice("制作草稿保存失败，请重试或导出草稿");
+      return;
+    }
     const sameTarget = level?.targetColors === stamp(result);
     const record: ContentLevel = {
       id: level?.id ?? makeId("level"),
@@ -543,7 +548,7 @@ export function AdminPage({
     }
   }
   function newLevel() {
-    onNavigate({
+    safeNavigate({
       kind: "admin",
       mode: "2d",
       activity: "challenge",
@@ -650,13 +655,14 @@ export function AdminPage({
     }
   }
   function apply() {
+    if (targetDirty) {
+      setNotice("当前关卡目标尚未保存，请先保存关卡目标");
+      return;
+    }
     try {
-      const student = structuredClone(content);
-      student.levels.forEach((level) => {
-        delete level.sourceCode;
-        delete level.sourceBlocks;
-      });
+      const student = studentContent(content);
       saveContent(publishedKey, student);
+      setPublished(student);
       setNotice("已应用到本机挑战");
     } catch (error) {
       setNotice(`应用失败：${String(error)}`);
@@ -710,8 +716,10 @@ export function AdminPage({
       setTool("draw");
       return;
     }
+    const dye = tool === "dye" || hit.dye;
+    if (dye && hit.empty) { setNotice("染色需要先选中已有体素"); return; }
     const target =
-      tool === "erase" || hit.empty || hit.dye
+      tool === "erase" || dye || hit.empty
         ? [x, y, z]
         : [x + hit.normal[0], y + hit.normal[1], z + hit.normal[2]];
     if (target.some((v) => Math.abs(v) > 8)) {
@@ -719,7 +727,7 @@ export function AdminPage({
       return;
     }
     const i = index3(target[0], target[1], target[2]);
-    if (tool === "draw" && !hit.dye && manual[i] !== 0) {
+    if (tool === "draw" && !dye && manual[i] !== 0) {
       setNotice("目标格已占用");
       return;
     }
@@ -735,7 +743,7 @@ export function AdminPage({
         </div>
         <button
           onClick={() =>
-            onNavigate({ kind: "start", mode: "2d", activity: "challenge" })
+            safeNavigate({ kind: "start", mode: "2d", activity: "challenge" })
           }
         >
           返回学生入口
@@ -745,7 +753,7 @@ export function AdminPage({
         <button
           aria-current={route.page === "levels"}
           onClick={() =>
-            onNavigate({
+            safeNavigate({
               kind: "admin",
               mode: "2d",
               activity: "challenge",
@@ -758,7 +766,7 @@ export function AdminPage({
         <button
           aria-current={route.page === "chapters"}
           onClick={() =>
-            onNavigate({
+            safeNavigate({
               kind: "admin",
               mode: "2d",
               activity: "challenge",
@@ -771,7 +779,7 @@ export function AdminPage({
         <button
           aria-current={route.page === "arrangement"}
           onClick={() =>
-            onNavigate({
+            safeNavigate({
               kind: "admin",
               mode: "2d",
               activity: "challenge",
@@ -790,6 +798,17 @@ export function AdminPage({
           {storageError || notice}
         </p>
       )}
+      <div className="admin-save-state" role="status">
+        {editing && <span>制作草稿：{draftStatus === "pending" ? "保存中…" : draftStatus === "failed" ? "保存失败" : "已保存"}</span>}
+        {editing && <span>关卡目标：{targetDirty ? "有未保存修改" : "已保存"}</span>}
+        <span>本机挑战：{unapplied ? "有未应用修改" : "与管理内容一致"}</span>
+        {editing && draftStatus === "failed" && <button onClick={saveAuthoring}>重试保存草稿</button>}
+        {failedContent && <button onClick={retryContent}>重试保存管理内容</button>}
+        {editing && <button onClick={() => download(`pixel-code-lab-authoring-${route.levelId}.json`, latestDraft.current)}>导出当前制作草稿</button>}
+        {failedContent && <button onClick={() => download("pixel-code-lab-unsaved-content.json", JSON.stringify(failedContent, null, 2))}>导出未保存管理内容</button>}
+      </div>
+      <details className="admin-transfer-details" open={!editing}>
+        <summary>备份、导入与应用</summary>
       <div className="admin-transfer">
         <button
           onClick={() =>
@@ -833,6 +852,7 @@ export function AdminPage({
         </label>
         <button onClick={apply}>应用到本机挑战</button>
       </div>
+      </details>
       {route.page === "chapters" && (
         <div className="admin-columns">
           <section>
@@ -1124,7 +1144,7 @@ export function AdminPage({
               </span>
               <button
                 onClick={() =>
-                  onNavigate({
+                  safeNavigate({
                     kind: "admin",
                     mode: "2d",
                     activity: "challenge",
@@ -1170,7 +1190,7 @@ export function AdminPage({
           <section className="admin-fields">
             <button
               onClick={() =>
-                onNavigate({
+                safeNavigate({
                   kind: "admin",
                   mode: "2d",
                   activity: "challenge",
@@ -1218,28 +1238,19 @@ export function AdminPage({
                 <div className="admin-row">
                   <button
                     aria-pressed={source === "manual"}
-                    onClick={() => {
-                      setSource("manual");
-                      setCandidate(null);
-                    }}
+                    onClick={() => chooseSource("manual")}
                   >
                     手动
                   </button>
                   <button
                     aria-pressed={source === "python"}
-                    onClick={() => {
-                      setSource("python");
-                      setCandidate(null);
-                    }}
+                    onClick={() => chooseSource("python")}
                   >
                     Python
                   </button>
                   <button
                     aria-pressed={source === "blocks"}
-                    onClick={() => {
-                      setSource("blocks");
-                      setCandidate(null);
-                    }}
+                    onClick={() => chooseSource("blocks")}
                   >
                     积木
                   </button>
@@ -1254,7 +1265,7 @@ export function AdminPage({
                           title={`${i} ${colorNames[i]}`}
                           onClick={() => {
                             setColor(i);
-                            setTool("draw");
+                            setTool((previous) => previous === "dye" ? "dye" : "draw");
                           }}
                           style={{ background: p }}
                         >
@@ -1269,6 +1280,7 @@ export function AdminPage({
                       >
                         画笔/添加
                       </button>
+                      {levelMode === "3d" && <button aria-pressed={tool === "dye"} onClick={() => setTool("dye")}>染色</button>}
                       <button
                         aria-pressed={tool === "erase"}
                         onClick={() => setTool("erase")}
@@ -1365,8 +1377,9 @@ export function AdminPage({
                       <button
                         onClick={() => {
                           if (!candidate) return;
+                          if (manual.some((value, index) => value !== 0 && value !== candidate[index]) && !window.confirm("复制运行结果会替换当前手动草稿，确定继续？")) return;
                           updateManual(candidate);
-                          setSource("manual");
+                          chooseSource("manual");
                         }}
                         disabled={!candidate}
                       >
@@ -1411,7 +1424,16 @@ export function AdminPage({
               <p>内置样例在代码中定义。可在编排页放入小节。</p>
             )}
           </section>
-          <section className="admin-preview">
+          <section className={`admin-preview${expanded ? " admin-preview-expanded" : ""}`}>
+            <div className="admin-preview-head">
+              <h2>目标与编辑结果</h2>
+              <button onClick={() => setExpanded((value) => !value)}>{expanded ? "退出放大" : "放大编辑画布"}</button>
+            </div>
+            <div className="admin-saved-target">
+              <div><strong>已保存目标</strong><p>{level ? `版本 ${level.revision} · ${level.targetColors.replaceAll("0", "").length} 格` : "新关卡尚无已保存目标"}</p></div>
+              {level && <button className="admin-target-zoom" onClick={() => setTargetExpanded(true)} aria-label="放大已保存目标"><LevelThumbnail colors={[...level.targetColors].map(Number)} mode={level.mode} radius={level.radius} /></button>}
+            </div>
+            {level && targetExpanded && <div className="admin-target-overlay" role="dialog" aria-label="已保存目标预览"><button onClick={() => setTargetExpanded(false)}>关闭目标预览</button><LevelThumbnail colors={[...level.targetColors].map(Number)} mode={level.mode} radius={level.radius} /></div>}
             <h2>
               {source === "manual"
                 ? "手动编辑目标"
@@ -1424,8 +1446,9 @@ export function AdminPage({
                 colors={source === "manual" ? manual : (candidate ?? manual)}
                 radius={10}
                 color={color}
-                tool={source === "manual" ? tool : "pick"}
+                tool={source === "manual" ? (tool === "dye" ? "draw" : tool) : "pick"}
                 onStroke={source === "manual" ? paint : () => {}}
+                onPick={(picked) => { setColor(picked); setTool("draw"); }}
               />
             ) : (
               <>
@@ -1466,19 +1489,22 @@ export function AdminPage({
                     controls={controls}
                     label="三维目标编辑画布"
                     onEdit={source === "manual" ? edit3 : undefined}
+                    editMode={source === "manual" ? tool : undefined}
                     editLayer={slice}
                   />
                 </div>
                 <p>
-                  左键添加，Shift＋左键染色，右键拖动旋转；可在下方逐层网格修改内部方块。
+                  当前工具：{tool === "draw" ? "添加" : tool === "dye" ? "染色" : tool === "erase" ? "删除" : "吸管"}。左键操作，右键拖动旋转；下方逐层网格可修改内部方块。
                 </p>
                 {source === "manual" && (
                   <PixelPainter
                     colors={sliceColors}
                     radius={8}
+                    layer={slice}
                     color={color}
-                    tool={tool}
+                    tool={tool === "dye" ? "draw" : tool}
                     onStroke={draw3}
+                    onPick={(picked) => { setColor(picked); setTool("draw"); }}
                   />
                 )}
               </>

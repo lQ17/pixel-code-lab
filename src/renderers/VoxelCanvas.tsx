@@ -5,7 +5,7 @@ import { palette, colorNames } from '../engine/levels'
 import { faces, rotatePoint, type Point } from './voxelGeometry'
 import { directionalLight, cornerOcclusion, paintOcclusion, litColor } from './voxelLighting'
 
-export function VoxelCanvas({ colors, radius, controls, label = '三维体素画布', onEdit, editLayer = 0 }: { colors: number[]; radius: number; controls: VoxelControls; label?: string; showControls?: boolean; onEdit?: (hit: { voxel: Point; normal: Point; empty: boolean; dye: boolean }) => void; editLayer?: number }) {
+export function VoxelCanvas({ colors, radius, controls, label = '三维体素画布', onEdit, editMode = 'add', editLayer = 0 }: { colors: number[]; radius: number; controls: VoxelControls; label?: string; showControls?: boolean; onEdit?: (hit: { voxel: Point; normal: Point; empty: boolean; dye: boolean }) => void; editMode?: 'draw' | 'dye' | 'erase' | 'pick' | 'add'; editLayer?: number }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const { view, setView, axes, cuts, setCuts, showCutHandles, lighting } = controls
   const cutDrag = useRef<{ axis: number; x: number; y: number; value: number; dx: number; dy: number } | null>(null)
@@ -62,6 +62,17 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
     if (Math.abs(x)>radius || Math.abs(y)>radius) return null
     return [x,y,editLayer] as Point
   }, [onEdit,pointer,hover,size,view,editLayer,radius])
+  const preview = useMemo(() => {
+    if (!onEdit) return null
+    const target: Point | null = hover ? (editMode === 'add' || editMode === 'draw' ? [hover.voxel[0]+hover.normal[0],hover.voxel[1]+hover.normal[1],hover.voxel[2]+hover.normal[2]] : hover.voxel) : emptyHit
+    if (!target) return null
+    const [x,y,z]=target
+    const inBounds=Math.max(Math.abs(x),Math.abs(y),Math.abs(z))<=radius
+    const index=(z+radius)*(radius*2+1)**2+(radius-y)*(radius*2+1)+x+radius
+    const occupied=inBounds && colors[index]!==0
+    const valid=inBounds && (editMode==='erase' || editMode==='pick' || editMode==='dye' ? !!occupied : !occupied)
+    return { target, valid, occupied }
+  }, [onEdit,hover,emptyHit,editMode,colors,radius])
   useEffect(() => {
     const element = canvas.current!
     const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }))
@@ -105,9 +116,9 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.stroke()
       }
     }
-    if (onEdit && emptyHit) {
-      const points = faces[4].corners.map(([a,b,c]) => project([emptyHit[0]+a,emptyHit[1]+b,emptyHit[2]+c]))
-      ctx.fillStyle='#6aefce55'; ctx.strokeStyle='#b9fff0'; ctx.lineWidth=1.5
+    if (onEdit && preview && (emptyHit || editMode==='add' || editMode==='draw')) {
+      const points = faces[4].corners.map(([a,b,c]) => project([preview.target[0]+a,preview.target[1]+b,preview.target[2]+c]))
+      ctx.fillStyle=preview.valid?'#6aefce55':'#ff6b6b55'; ctx.strokeStyle=preview.valid?'#b9fff0':'#ff9d93'; ctx.lineWidth=1.5
       ctx.beginPath(); points.forEach(([x,y],i) => { if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y) }); ctx.closePath(); ctx.fill(); ctx.stroke()
     }
     if (axes) {
@@ -190,7 +201,7 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
         text('+'+label,bx+dx*14+nx*14,by+dy*14+ny*14)
       }
     }
-  }, [surface, radius, view, axes, size, colors, cuts, hover, onEdit, emptyHit])
+  }, [surface, radius, view, axes, size, colors, cuts, hover, onEdit, emptyHit, preview, editMode])
   const scale = Math.min(size.width, size.height) / ((radius * 2 + 3) * 1.8) * view.zoom
   const vectors = ([ [1,0,0], [0,1,0], [0,0,1] ] as Point[]).map(point => {
     const [x,y] = rotatePoint(point, view)
@@ -208,6 +219,7 @@ export function VoxelCanvas({ colors, radius, controls, label = '三维体素画
       onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }} onLostPointerCapture={() => { drag.current = null }}
       onKeyDown={e => { if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-'].includes(e.key)) return; e.preventDefault(); setView(v => ({ ...v,topDown:['+','-'].includes(e.key)?v.topDown:false,yaw:v.yaw+(e.key==='ArrowLeft'?-.1:e.key==='ArrowRight'?.1:0),pitch:Math.max(-Math.PI/2,Math.min(Math.PI/2,v.pitch+(e.key==='ArrowUp'?.1:e.key==='ArrowDown'?-.1:0))),zoom:Math.max(.4,Math.min(4,v.zoom*(e.key==='+'?1.1:e.key==='-'?1/1.1:1))) })) }}/>
     {hover && pointer && <p className="coordinate voxel-coordinate" role="tooltip" style={{left:Math.max(4,Math.min(pointer.x+12,size.width-280)),top:Math.max(4,pointer.y-34)}}><span>坐标:(</span><span className="coordinate-x">x: {hover.voxel[0]}</span><span>, </span><span className="coordinate-y">y: {hover.voxel[1]}</span><span>, </span><span className="coordinate-z">z: {hover.voxel[2]}</span><span>), </span><span className="coordinate-color">颜色: <i className="coordinate-swatch" style={{backgroundColor:palette[hover.color]}}/>{colorNames[hover.color]}</span></p>}
+    {onEdit && preview && <span className={`admin-voxel-preview-status${preview.valid?'':' invalid'}`}>{preview.valid ? `落点 ${preview.target.join(', ')}` : `不可操作 ${preview.target.join(', ')}`}</span>}
     {axes && showCutHandles && vectors.map(([vx,vy], axis) => {
       if (Math.hypot(vx,vy) < .08) return null
       const label = ['X','Y','Z'][axis]

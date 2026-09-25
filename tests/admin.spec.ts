@@ -15,7 +15,10 @@ test("手工创建二维关卡、编排并在学生端挑战", async ({ page, co
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await expect(page.getByText("当前非空格：1")).toBeVisible();
   await page.getByRole("button", { name: "保存为关卡目标" }).click();
+  await expect(page.getByRole("heading", { name: "编辑关卡" })).toBeVisible();
   await page.screenshot({ path: "test-results/admin-layout.png" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: "test-results/admin-layout-wide.png" });
   await page.getByRole("button", { name: "章节管理" }).click();
   page.once("dialog", (dialog) => dialog.accept("第一章"));
   await page.getByRole("button", { name: "＋ 新增大章" }).click();
@@ -75,6 +78,115 @@ test("三维立体画布可从空场景直接放置体素", async ({ page }) => 
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await expect(page.getByText("当前非空格：1")).toBeVisible();
+  await page.getByRole("button", { name: "染色", exact: true }).click();
+  await page.getByRole("button", { name: "4", exact: true }).click();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await expect(page.getByText(/落点/)).toBeVisible();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.getByLabel("名称").fill("染色体素");
+  await page.getByRole("button", { name: "保存为关卡目标" }).click();
+  const target = await page.evaluate(() => JSON.parse(localStorage.getItem("pixel-code-lab.admin-draft")!).levels[0].targetColors as string);
+  expect(target[2456]).toBe("4");
+});
+
+test("手动笔触实时显示，整笔撤销，制作草稿与目标状态明确", async ({ page }) => {
+  await page.goto("/#/admin/levels/new");
+  await page.getByLabel("名称").fill("连续笔画");
+  const canvas = page.locator('canvas[aria-label="手动像素画布"]').first();
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  const cell = box!.width / 21;
+  const x = box!.x + cell * 10.5;
+  const y = box!.y + cell * 10.5;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + cell * 3, y, { steps: 3 });
+  const pixel = await canvas.evaluate((element: HTMLCanvasElement) =>
+    [...element.getContext("2d")!.getImageData(10 * 24 + 12, 10 * 24 + 12, 1, 1).data],
+  );
+  expect(pixel.slice(0, 3)).not.toEqual([23, 42, 54]);
+  await page.mouse.up();
+  await expect(page.getByText("当前非空格：4")).toBeVisible();
+  await page.getByRole("button", { name: "撤销" }).click();
+  await expect(page.getByText("当前非空格：0")).toBeVisible();
+  await page.getByRole("button", { name: "重做" }).click();
+  await expect(page.getByText("当前非空格：4")).toBeVisible();
+  await expect(page.getByText("制作草稿：已保存")).toBeVisible();
+  await expect(page.getByText("关卡目标：有未保存修改")).toBeVisible();
+  await page.getByRole("button", { name: "保存为关卡目标" }).click();
+  await expect(page.getByText("关卡目标：已保存")).toBeVisible();
+  await expect(page.getByText("本机挑战：有未应用修改")).toBeVisible();
+  await expect(page.getByText("已保存目标")).toBeVisible();
+  await page.getByRole("button", { name: "放大已保存目标" }).click();
+  await expect(page.getByRole("dialog", { name: "已保存目标预览" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "已保存目标预览" })).toHaveCount(0);
+});
+
+test("程序结果在制作方式切换后仍可使用，覆盖手动草稿需确认", async ({ page }) => {
+  await page.goto("/#/admin/levels/new");
+  await page.getByRole("button", { name: "Python", exact: true }).click();
+  await page.getByRole("button", { name: "运行生成目标" }).click();
+  await expect(page.getByRole("heading", { name: "运行结果预览" })).toBeVisible();
+  await page.getByRole("button", { name: "手动", exact: true }).click();
+  await page.getByRole("button", { name: "Python", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "运行结果预览" })).toBeVisible();
+});
+
+test("制作草稿写入失败后可重试，内存草稿未丢失", async ({ page }) => {
+  await page.goto("/#/admin/levels/new");
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    (window as typeof window & { restoreSetItem?: () => void }).restoreSetItem = () => { Storage.prototype.setItem = original; };
+    Storage.prototype.setItem = function (key, value) {
+      if (this === localStorage && key.startsWith("pixel-code-lab.authoring.")) throw new Error("quota-test");
+      return original.call(this, key, value);
+    };
+  });
+  await page.getByLabel("名称").fill("写入失败仍在");
+  await expect(page.getByText("制作草稿：保存失败")).toBeVisible();
+  await expect(page.getByText(/quota-test/)).toBeVisible();
+  await page.evaluate(() => (window as typeof window & { restoreSetItem: () => void }).restoreSetItem());
+  await page.getByRole("button", { name: "重试保存草稿" }).click();
+  await expect(page.getByText("制作草稿：已保存")).toBeVisible();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("pixel-code-lab.authoring.new")!));
+  expect(saved.title).toBe("写入失败仍在");
+});
+
+test("写入失败时同标签页临时备份可在刷新后恢复", async ({ page }) => {
+  await page.goto("/#/admin/levels/new");
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (this === localStorage && key.startsWith("pixel-code-lab.authoring.")) throw new Error("quota-test");
+      return original.call(this, key, value);
+    };
+  });
+  await page.getByLabel("名称").fill("临时恢复关卡");
+  await expect(page.getByText("制作草稿：保存失败")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("名称")).toHaveValue("临时恢复关卡");
+  await expect(page.getByText("已恢复未保存的制作草稿，请重试保存")).toBeVisible();
+});
+
+test("新关卡切换二维三维后分别恢复手动草稿，刷新仍保留", async ({ page }) => {
+  await page.goto("/#/admin/levels/new");
+  const grid = page.locator('canvas[aria-label="手动像素画布"]').first();
+  await grid.scrollIntoViewIfNeeded();
+  const first = await grid.boundingBox();
+  expect(first).not.toBeNull();
+  await page.mouse.click(first!.x + first!.width / 2, first!.y + first!.height / 2);
+  await expect(page.getByText("当前非空格：1")).toBeVisible();
+  await page.getByRole("button", { name: "3D", exact: true }).click();
+  await expect(page.getByText("当前非空格：0")).toBeVisible();
+  await page.getByRole("button", { name: "2D", exact: true }).click();
+  await expect(page.getByText("当前非空格：1")).toBeVisible();
+  await page.getByRole("button", { name: "3D", exact: true }).click();
+  await expect(page.getByText("制作草稿：已保存")).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "2D", exact: true }).click();
   await expect(page.getByText("当前非空格：1")).toBeVisible();
 });
 
