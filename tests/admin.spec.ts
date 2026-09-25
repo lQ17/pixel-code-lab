@@ -20,12 +20,14 @@ test("手工创建二维关卡、编排并在学生端挑战", async ({ page, co
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: "test-results/admin-layout-wide.png" });
   await page.getByRole("button", { name: "章节管理" }).click();
-  page.once("dialog", (dialog) => dialog.accept("第一章"));
   await page.getByRole("button", { name: "＋ 新增大章" }).click();
-  page.once("dialog", (dialog) => dialog.accept("坐标基础"));
+  await page.getByLabel("新大章名称").fill("第一章");
+  await page.getByRole("button", { name: "创建" }).click();
   await page.getByRole("button", { name: "＋ 新增小节" }).click();
+  await page.getByLabel(/在「第一章」新增小节/).fill("坐标基础");
+  await page.getByRole("button", { name: "创建" }).click();
   await page.getByRole("button", { name: "关卡编排" }).click();
-  await page.getByRole("button", { name: "坐标基础" }).click();
+  await page.getByRole("button", { name: /坐标基础/ }).click();
   await page
     .locator("article")
     .filter({ hasText: "手工星点" })
@@ -291,25 +293,34 @@ test("自定义三维关卡使用完整体素目标判定", async ({ page, conte
 
 test("大章和小节可修改、迁移、删除，非空大章受保护", async ({ page }) => {
   await page.goto("/#/admin/chapters");
-  page.once("dialog", (dialog) => dialog.accept("第一章"));
   await page.getByRole("button", { name: "＋ 新增大章" }).click();
-  page.once("dialog", (dialog) => dialog.accept("第二章"));
+  await page.getByLabel("新大章名称").fill("第一章");
+  await page.getByRole("button", { name: "创建" }).click();
   await page.getByRole("button", { name: "＋ 新增大章" }).click();
-  await page.getByRole("button", { name: "第一章" }).click();
-  page.once("dialog", (dialog) => dialog.accept("坐标"));
+  await page.getByLabel("新大章名称").fill("第二章");
+  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: /第一章/ }).click();
   await page.getByRole("button", { name: "＋ 新增小节" }).click();
-  await page.locator(".admin-columns > section").first().locator("article").filter({ hasText: "第一章" }).getByRole("button", { name: "删除" }).click();
+  await page.getByLabel(/在「第一章」新增小节/).fill("坐标");
+  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: /第一章/ }).click();
+  await page.getByRole("button", { name: "删除", exact: true }).click();
+  await expect(page.getByText(/请先迁移或删除小节/)).toBeVisible();
+  await page.getByRole("button", { name: "确认删除" }).click();
   await expect(page.getByText("请先迁移或删除下属小节")).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept("第一章改名"));
-  await page.locator(".admin-columns > section").first().locator("article").filter({ hasText: "第一章" }).getByRole("button", { name: "修改" }).click();
+  await page.getByLabel("名称", { exact: true }).fill("第一章改名");
+  await page.getByRole("button", { name: "保存信息" }).click();
+  await page.getByRole("button", { name: /坐标/ }).click();
   const secondId = await page.evaluate(() => {
     const data = JSON.parse(localStorage.getItem("pixel-code-lab.admin-draft")!);
     return data.chapters.find((chapter: { title: string }) => chapter.title === "第二章").id as string;
   });
   await page.getByRole("combobox", { name: "将坐标迁移到大章" }).selectOption(secondId);
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.locator(".admin-columns > section").first().locator("article").filter({ hasText: "第一章改名" }).getByRole("button", { name: "删除" }).click();
-  await expect(page.getByRole("button", { name: "第一章改名" })).toHaveCount(0);
+  await page.getByRole("button", { name: "确认迁移" }).click();
+  await page.getByRole("button", { name: /第一章改名/ }).click();
+  await page.getByRole("button", { name: "删除", exact: true }).click();
+  await page.getByRole("button", { name: "确认删除" }).click();
+  await expect(page.getByRole("button", { name: /第一章改名/ })).toHaveCount(0);
   const content = await page.evaluate(() => JSON.parse(localStorage.getItem("pixel-code-lab.admin-draft")!));
   expect(content.sections).toHaveLength(1);
   expect(content.sections[0].chapterId).toBe(secondId);

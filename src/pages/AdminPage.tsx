@@ -34,6 +34,7 @@ import type { Project } from "../engine/projects";
 import { evaluate } from "../engine/evaluate";
 import { LevelThumbnail } from "../components/LevelThumbnail";
 import { PixelPainter } from "./PixelPainter";
+import { AdminStructure } from "./AdminStructure";
 import "./AdminPage.css";
 
 const CodeEditor = lazy(() => import("../components/CodeEditor"));
@@ -148,13 +149,11 @@ export function AdminPage({
     try { return loadContent(publishedKey); } catch { return null; }
   });
   const [notice, setNotice] = useState(authoring.recovered ? "已恢复未保存的制作草稿，请重试保存" : "");
-  const [selectedChapter, setSelectedChapter] = useState(
-    content.chapters[0]?.id ?? "",
-  );
-  const [selectedSection, setSelectedSection] = useState(
-    content.sections[0]?.id ?? "",
-  );
   const [levelSearch, setLevelSearch] = useState("");
+  const [levelModeFilter, setLevelModeFilter] = useState<"all" | ContentMode>("all");
+  const [levelArchiveFilter, setLevelArchiveFilter] = useState<"all" | "active" | "archived">("all");
+  const [levelPlacementFilter, setLevelPlacementFilter] = useState<"all" | "placed" | "unplaced">("all");
+  const [pendingArchiveId, setPendingArchiveId] = useState("");
   const [projects] = useState(() => {
     try {
       const progress = parseProgress(localStorage.getItem(STORAGE_KEY));
@@ -556,83 +555,11 @@ export function AdminPage({
       levelId: "new",
     });
   }
-  function addChapter() {
-    const name = window.prompt("大章名称");
-    if (!name?.trim()) return;
-    const id = makeId("chapter");
-    if (
-      change({
-        ...content,
-        chapters: [
-          ...content.chapters,
-          {
-            id,
-            title: name.trim(),
-            description: "",
-            order: content.chapters.length,
-          },
-        ],
-      })
-    )
-      setSelectedChapter(id);
-  }
-  function addSection() {
-    if (!selectedChapter) {
-      setNotice("先选择一个大章");
-      return;
+  function copyLevel(level: ContentLevel) {
+    const copy: ContentLevel = { ...structuredClone(level), id: makeId("level"), title: `${level.title} 副本`, revision: 1, archived: false };
+    if (change({ ...content, levels: [...content.levels, copy] })) {
+      setNotice(`已复制关卡「${level.title}」，新 ID：${copy.id}；副本未编排，学生进度独立`);
     }
-    const name = window.prompt("小节名称");
-    if (!name?.trim()) return;
-    const id = makeId("section");
-    if (
-      change({
-        ...content,
-        sections: [
-          ...content.sections,
-          {
-            id,
-            chapterId: selectedChapter,
-            title: name.trim(),
-            description: "",
-            order: content.sections.filter(
-              (s) => s.chapterId === selectedChapter,
-            ).length,
-          },
-        ],
-      })
-    )
-      setSelectedSection(id);
-  }
-  function movePlacement(levelId: string, sectionId: string) {
-    const other = content.placements.filter((p) => p.levelId !== levelId);
-    change({
-      ...content,
-      placements: sectionId
-        ? [
-            ...other,
-            {
-              levelId,
-              sectionId,
-              order: other.filter((p) => p.sectionId === sectionId).length,
-            },
-          ]
-        : other,
-    });
-  }
-  function reorder(levelId: string, delta: number) {
-    const items = content.placements
-      .filter((p) => p.sectionId === selectedSection)
-      .sort((a, b) => a.order - b.order);
-    const i = items.findIndex((p) => p.levelId === levelId);
-    const j = i + delta;
-    if (i < 0 || j < 0 || j >= items.length) return;
-    [items[i], items[j]] = [items[j], items[i]];
-    change({
-      ...content,
-      placements: content.placements
-        .filter((p) => p.sectionId !== selectedSection)
-        .concat(items.map((p, order) => ({ ...p, order }))),
-    });
   }
   async function importFile(file: File, toPublished = false) {
     try {
@@ -686,12 +613,11 @@ export function AdminPage({
   const displayed = allIds
     .map((id) => getLevel(id, content))
     .filter(
-      (l): l is NonNullable<typeof l> => !!l && l.title.includes(levelSearch),
+      (l): l is NonNullable<typeof l> => !!l && (l.title.toLocaleLowerCase().includes(levelSearch.toLocaleLowerCase()) || l.id.includes(levelSearch)) &&
+        (levelModeFilter === "all" || l.mode === levelModeFilter) &&
+        (levelArchiveFilter === "all" || (levelArchiveFilter === "archived") === l.archived) &&
+        (levelPlacementFilter === "all" || (levelPlacementFilter === "placed") === content.placements.some((p) => p.levelId === l.id)),
     );
-  const currentSection = content.sections.find((s) => s.id === selectedSection);
-  const sectionLevels = content.placements
-    .filter((p) => p.sectionId === selectedSection)
-    .sort((a, b) => a.order - b.order);
   const sliceColors =
     levelMode === "3d"
       ? Array.from(
@@ -853,272 +779,8 @@ export function AdminPage({
         <button onClick={apply}>应用到本机挑战</button>
       </div>
       </details>
-      {route.page === "chapters" && (
-        <div className="admin-columns">
-          <section>
-            <h2>大章</h2>
-            <button onClick={addChapter}>＋ 新增大章</button>
-            {content.chapters
-              .slice()
-              .sort((a, b) => a.order - b.order)
-              .map((ch) => (
-                <article
-                  key={ch.id}
-                  className={selectedChapter === ch.id ? "selected" : ""}
-                >
-                  <button onClick={() => setSelectedChapter(ch.id)}>
-                    {ch.title}
-                  </button>
-                  <button
-                    title="重命名"
-                    onClick={() => {
-                      const value = window.prompt("大章名称", ch.title);
-                      if (value?.trim())
-                        change({
-                          ...content,
-                          chapters: content.chapters.map((c) =>
-                            c.id === ch.id ? { ...c, title: value.trim() } : c,
-                          ),
-                        });
-                    }}
-                  >
-                    修改
-                  </button>
-                  <button
-                    onClick={() => {
-                      const value = window.prompt("大章简介", ch.description);
-                      if (value !== null)
-                        change({
-                          ...content,
-                          chapters: content.chapters.map((c) =>
-                            c.id === ch.id ? { ...c, description: value } : c,
-                          ),
-                        });
-                    }}
-                  >
-                    简介
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (content.sections.some((s) => s.chapterId === ch.id)) {
-                        setNotice("请先迁移或删除下属小节");
-                        return;
-                      }
-                      if (window.confirm(`删除大章「${ch.title}」？`))
-                        change({
-                          ...content,
-                          chapters: content.chapters.filter(
-                            (c) => c.id !== ch.id,
-                          ),
-                        });
-                    }}
-                  >
-                    删除
-                  </button>
-                  <button
-                    onClick={() => {
-                      const items = content.chapters
-                          .slice()
-                          .sort((a, b) => a.order - b.order),
-                        i = items.findIndex((c) => c.id === ch.id);
-                      if (i <= 0) return;
-                      [items[i - 1], items[i]] = [items[i], items[i - 1]];
-                      change({
-                        ...content,
-                        chapters: items.map((c, order) => ({ ...c, order })),
-                      });
-                    }}
-                  >
-                    ↑
-                  </button>
-                </article>
-              ))}
-          </section>
-          <section>
-            <h2>小节</h2>
-            <button onClick={addSection}>＋ 新增小节</button>
-            {content.sections
-              .filter((s) => s.chapterId === selectedChapter)
-              .sort((a, b) => a.order - b.order)
-              .map((sec) => (
-                <article key={sec.id}>
-                  <button onClick={() => setSelectedSection(sec.id)}>
-                    {sec.title}
-                  </button>
-                  <button
-                    onClick={() => {
-                      const value = window.prompt("小节名称", sec.title);
-                      if (value?.trim())
-                        change({
-                          ...content,
-                          sections: content.sections.map((s) =>
-                            s.id === sec.id ? { ...s, title: value.trim() } : s,
-                          ),
-                        });
-                    }}
-                  >
-                    修改
-                  </button>
-                  <button
-                    onClick={() => {
-                      const value = window.prompt("小节简介", sec.description);
-                      if (value !== null)
-                        change({
-                          ...content,
-                          sections: content.sections.map((s) =>
-                            s.id === sec.id ? { ...s, description: value } : s,
-                          ),
-                        });
-                    }}
-                  >
-                    简介
-                  </button>
-                  <select
-                    aria-label={`将${sec.title}迁移到大章`}
-                    value={sec.chapterId}
-                    onChange={(event) =>
-                      change({
-                        ...content,
-                        sections: content.sections.map((s) =>
-                          s.id === sec.id
-                            ? { ...s, chapterId: event.target.value }
-                            : s,
-                        ),
-                      })
-                    }
-                  >
-                    {content.chapters.map((chapter) => (
-                      <option key={chapter.id} value={chapter.id}>
-                        {chapter.title}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => {
-                      if (
-                        !window.confirm(
-                          `删除小节「${sec.title}」？其中关卡会移入未编排池。`,
-                        )
-                      )
-                        return;
-                      change({
-                        ...content,
-                        sections: content.sections.filter(
-                          (s) => s.id !== sec.id,
-                        ),
-                        placements: content.placements.filter(
-                          (p) => p.sectionId !== sec.id,
-                        ),
-                      });
-                    }}
-                  >
-                    删除
-                  </button>
-                  <button
-                    onClick={() => {
-                      const items = content.sections
-                          .filter((s) => s.chapterId === selectedChapter)
-                          .sort((a, b) => a.order - b.order),
-                        i = items.findIndex((s) => s.id === sec.id);
-                      if (i <= 0) return;
-                      [items[i - 1], items[i]] = [items[i], items[i - 1]];
-                      change({
-                        ...content,
-                        sections: content.sections.map((s) =>
-                          items.find((x) => x.id === s.id)
-                            ? {
-                                ...s,
-                                order: items.findIndex((x) => x.id === s.id),
-                              }
-                            : s,
-                        ),
-                      });
-                    }}
-                  >
-                    ↑
-                  </button>
-                </article>
-              ))}
-          </section>
-        </div>
-      )}
-      {route.page === "arrangement" && (
-        <div className="admin-columns">
-          <section>
-            <h2>选择小节</h2>
-            {content.chapters
-              .slice()
-              .sort((a, b) => a.order - b.order)
-              .map((ch) => (
-                <div key={ch.id}>
-                  <h3>{ch.title}</h3>
-                  {content.sections
-                    .filter((s) => s.chapterId === ch.id)
-                    .sort((a, b) => a.order - b.order)
-                    .map((sec) => (
-                      <button
-                        key={sec.id}
-                        aria-pressed={selectedSection === sec.id}
-                        onClick={() => setSelectedSection(sec.id)}
-                      >
-                        {sec.title}
-                      </button>
-                    ))}
-                </div>
-              ))}
-          </section>
-          <section>
-            <h2>{currentSection?.title ?? "未选择小节"}</h2>
-            {sectionLevels.map((p) => (
-              <article key={p.levelId}>
-                <span>{getLevel(p.levelId, content)?.title ?? p.levelId}</span>
-                <button onClick={() => reorder(p.levelId, -1)}>↑</button>
-                <button onClick={() => reorder(p.levelId, 1)}>↓</button>
-                <button onClick={() => movePlacement(p.levelId, "")}>
-                  移出
-                </button>
-              </article>
-            ))}
-            <h3>未编排关卡</h3>
-            {displayed
-              .filter(
-                (l) => !content.placements.some((p) => p.levelId === l.id),
-              )
-              .map((l) => (
-                <article key={l.id}>
-                  <LevelThumbnail
-                    colors={l.colors}
-                    mode={l.mode}
-                    radius={l.radius}
-                  />
-                  <span>
-                    {l.title} · {l.mode}
-                  </span>
-                  <button
-                    disabled={!selectedSection}
-                    onClick={() => movePlacement(l.id, selectedSection)}
-                  >
-                    加入本小节
-                  </button>
-                </article>
-              ))}
-            {content.placements
-              .filter((p) => p.sectionId !== selectedSection)
-              .map((p) => (
-                <article key={p.levelId}>
-                  <span>
-                    {getLevel(p.levelId, content)?.title} · 已在其他小节
-                  </span>
-                  <button
-                    disabled={!selectedSection}
-                    onClick={() => movePlacement(p.levelId, selectedSection)}
-                  >
-                    移动到本小节
-                  </button>
-                </article>
-              ))}
-          </section>
-        </div>
+      {(route.page === "chapters" || route.page === "arrangement") && (
+        <AdminStructure page={route.page} content={content} change={change} setNotice={setNotice} />
       )}
       {route.page === "levels" && !editing && (
         <section className="admin-list">
@@ -1126,11 +788,16 @@ export function AdminPage({
             <h2>关卡库</h2>
             <button onClick={newLevel}>＋ 新建关卡</button>
             <input
-              placeholder="搜索关卡"
+              aria-label="搜索关卡"
+              placeholder="搜索名称或 ID"
               value={levelSearch}
               onChange={(e) => setLevelSearch(e.target.value)}
             />
+            <select aria-label="筛选维度" value={levelModeFilter} onChange={(e) => setLevelModeFilter(e.target.value as typeof levelModeFilter)}><option value="all">全部维度</option><option value="2d">2D</option><option value="3d">3D</option></select>
+            <select aria-label="筛选归档" value={levelArchiveFilter} onChange={(e) => setLevelArchiveFilter(e.target.value as typeof levelArchiveFilter)}><option value="all">全部归档状态</option><option value="active">未归档</option><option value="archived">已归档</option></select>
+            <select aria-label="筛选编排" value={levelPlacementFilter} onChange={(e) => setLevelPlacementFilter(e.target.value as typeof levelPlacementFilter)}><option value="all">全部编排状态</option><option value="placed">已编排</option><option value="unplaced">未编排</option></select>
           </div>
+          <p className="admin-hint">显示 {displayed.length} 关 · 自定义 {content.levels.length} 关</p>
           {displayed.map((l) => (
             <article key={l.id}>
               <LevelThumbnail
@@ -1141,7 +808,10 @@ export function AdminPage({
               <span>
                 {l.title} · {l.mode}
                 {l.archived ? " · 已归档" : ""}
+                <small> · {l.id} · {(() => { const placement = content.placements.find((p) => p.levelId === l.id); const section = content.sections.find((s) => s.id === placement?.sectionId); const chapter = content.chapters.find((c) => c.id === section?.chapterId); return section ? `${chapter?.title ?? "?"} / ${section.title}` : "未编排"; })()}</small>
               </span>
+              {content.levels.some((c) => c.id === l.id) && <button onClick={() => copyLevel(content.levels.find((c) => c.id === l.id)!)}>复制关卡</button>}
+              {content.levels.some((c) => c.id === l.id) && <button onClick={() => setPendingArchiveId(l.id)}>{l.archived ? "恢复" : "归档"}</button>}
               <button
                 onClick={() =>
                   safeNavigate({
@@ -1159,6 +829,7 @@ export function AdminPage({
               </button>
             </article>
           ))}
+          {pendingArchiveId && (() => { const level = content.levels.find((item) => item.id === pendingArchiveId); if (!level) return null; const placement = content.placements.find((item) => item.levelId === level.id); return <div className="admin-impact" role="alert"><strong>{level.archived ? "恢复" : "归档"}「{level.title}」</strong><p>影响 1 个关卡{placement ? "，已编排目录位置保留" : "，当前未编排"}；关卡 ID、目标和学生历史进度保留。</p><button onClick={() => { if (change({ ...content, levels: content.levels.map((item) => item.id === level.id ? { ...item, archived: !item.archived } : item) })) { setNotice(level.archived ? "关卡已恢复" : "关卡已归档"); setPendingArchiveId(""); } }}>确认{level.archived ? "恢复" : "归档"}</button><button onClick={() => setPendingArchiveId("")}>取消</button></div>; })()}
         </section>
       )}
       {editing && projects.length > 0 && (
@@ -1401,24 +1072,10 @@ export function AdminPage({
                   />{" "}
                   归档（学生端不显示）
                 </label>
+                {level && <p className="admin-hint">归档影响此 1 个关卡；保留关卡 ID、已编排位置、目标和学生历史进度。保存目标后生效。</p>}
                 <button className="admin-primary" onClick={saveLevel}>
                   保存为关卡目标
                 </button>
-                {level && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm("归档此关卡？历史进度仍保留。"))
-                        change({
-                          ...content,
-                          levels: content.levels.map((l) =>
-                            l.id === level.id ? { ...l, archived: true } : l,
-                          ),
-                        });
-                    }}
-                  >
-                    归档关卡
-                  </button>
-                )}
               </>
             ) : (
               <p>内置样例在代码中定义。可在编排页放入小节。</p>

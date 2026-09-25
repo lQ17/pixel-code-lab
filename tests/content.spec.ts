@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { emptyContent, getLevel, validateContent } from "../src/engine/content";
+import { emptyContent, getLevel, validateContent, visibleLevels } from "../src/engine/content";
 
 test("内容包严格校验目标长度、颜色、层级和重复关卡", () => {
   const base = emptyContent();
@@ -33,6 +33,9 @@ test("内容包严格校验目标长度、颜色、层级和重复关卡", () =>
   };
   expect(validateContent(valid)).toEqual(valid);
   expect(getLevel(level.id, valid)?.colors).toHaveLength(441);
+  expect(visibleLevels(valid, "section-one")).toHaveLength(1);
+  expect(visibleLevels({ ...valid, chapters: [{ ...valid.chapters[0], archived: true }] }, "section-one")).toHaveLength(0);
+  expect(visibleLevels({ ...valid, sections: [{ ...valid.sections[0], archived: true }] }, "section-one")).toHaveLength(0);
   for (const changed of [
     { ...valid, levels: [{ ...level, targetColors: "0".repeat(440) }] },
     { ...valid, levels: [{ ...level, targetColors: "9".repeat(441) }] },
@@ -42,6 +45,7 @@ test("内容包严格校验目标长度、颜色、层级和重复关卡", () =>
       placements: [{ levelId: level.id, sectionId: "missing", order: 0 }],
     },
     { ...valid, sections: [{ ...valid.sections[0], chapterId: "missing" }] },
+    { ...valid, chapters: [{ ...valid.chapters[0], archived: "yes" }] },
   ])
     expect(() => validateContent(changed)).toThrow();
 });

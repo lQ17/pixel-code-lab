@@ -14,6 +14,7 @@ export interface Chapter {
   title: string;
   description: string;
   order: number;
+  archived?: boolean;
 }
 export interface Section {
   id: string;
@@ -21,6 +22,7 @@ export interface Section {
   title: string;
   description: string;
   order: number;
+  archived?: boolean;
 }
 export interface ContentLevel {
   id: string;
@@ -83,6 +85,10 @@ function order(v: unknown): number {
     throw new Error("排序值无效");
   return Number(v);
 }
+function archive(v: unknown): boolean {
+  if (typeof v !== "boolean") throw new Error("归档状态无效");
+  return v;
+}
 function unique(items: { id: string }[]) {
   if (new Set(items.map((i) => i.id)).size !== items.length)
     throw new Error("内容 ID 重复");
@@ -112,6 +118,7 @@ export function validateContent(value: unknown): ContentPackage {
       title: title(v.title),
       description: description(v.description),
       order: order(v.order),
+      ...(v.archived === undefined ? {} : { archived: archive(v.archived) }),
     };
   });
   const sections = data.sections.map((item) => {
@@ -122,6 +129,7 @@ export function validateContent(value: unknown): ContentPackage {
       title: title(v.title),
       description: description(v.description),
       order: order(v.order),
+      ...(v.archived === undefined ? {} : { archived: archive(v.archived) }),
     };
   });
   const builtIn = new Set([...levels.map((l) => l.id), ...voxelTargetIds]);
@@ -269,6 +277,8 @@ export function getLevel(
   return null;
 }
 export function visibleLevels(content: ContentPackage, sectionId: string) {
+  const section = content.sections.find((item) => item.id === sectionId);
+  if (!section || section.archived || content.chapters.find((item) => item.id === section.chapterId)?.archived) return [];
   return content.placements
     .filter((p) => p.sectionId === sectionId)
     .sort((a, b) => a.order - b.order)
